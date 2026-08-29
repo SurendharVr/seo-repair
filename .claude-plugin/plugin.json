@@ -1,0 +1,13 @@
+{
+  "name": "seo-repair",
+  "displayName": "SEO Repair",
+  "version": "1.0.0",
+  "description": "Crawl-driven SEO audit, repair planning and implementation for a local site codebase or its dev server. Proposes every edit before applying it, and never invents search volume, keyword difficulty or backlink data.",
+  "author": {
+    "name": "surendhar-v",
+    "url": "https://github.com/SurendharVr"
+  },
+  "homepage": "https://github.com/SurendharVr/seo-repair",
+  "license": "MIT",
+  "keywords": ["seo", "audit", "crawler", "schema", "core-web-vitals", "static-site"]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "seo-repair",
+  "owner": {
+    "name": "surendhar-v",
+    "url": "https://github.com/SurendharVr"
+  },
+  "plugins": [
+    {
+      "name": "seo-repair",
+      "source": "./",
+      "description": "Crawl-driven SEO audit, repair planning and implementation. Ordered gates stop you optimising pages Google cannot index, or building links to pages about to be merged away."
+    }
+  ]
+}

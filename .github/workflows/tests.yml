@@ -1,0 +1,65 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # The skill was authored on Windows and had never run elsewhere. This matrix is
+    # the evidence that it does. Lighthouse is deliberately excluded -- it needs a
+    # real browser, and a green check that did not actually exercise it would be
+    # worse than an honest gap (see README "Limitations").
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.9", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - name: Unit tests
+        run: python tests/test_skill.py
+      - name: End-to-end against the demo site
+        shell: bash
+        run: |
+          cd scripts
+          python crawl.py        --root ../examples/demo-site --out crawl.json
+          python schema_check.py --crawl crawl.json --out schema.json
+          python audit.py        --crawl crawl.json --schema schema.json --out findings.json
+          python - <<'PY'
+          import json, sys
+          d = json.load(open("findings.json", encoding="utf-8"))
+          ids = {f["id"] for f in d["findings"]}
+          # The defects the demo site plants on purpose. If any stops being detected,
+          # the tool has regressed even though every unit test still passes.
+          required = {
+              "S3-DUPLICATE-EXACT", "S2-ORPHAN", "S2-UNREACHABLE", "S1-CANONICAL-CROSS",
+              "S1-SITEMAP-ORPHAN", "S1-SITEMAP-GAP", "S1-CANONICAL-MISSING",
+              "S3-TITLE-DUPLICATE", "S3-DESC-DUPLICATE", "S3-TITLE-SHORT",
+              "S3-IMG-HEAVY", "S3-THIN", "S3-IMG-ALT-MISSING", "S3-IMG-DIMS-MISSING",
+              "S2-HEADING-SKIP", "S5-SCHEMA-UNSUPPORTED-CLAIM", "S3-ASSET-UNUSED",
+          }
+          missing = sorted(required - ids)
+          gates = {g["gate"]: g["status"] for g in d["gates"]}
+          problems = []
+          if missing:
+              problems.append("planted defects not detected: " + ", ".join(missing))
+          if gates.get("B") != "BLOCKED":
+              problems.append("gate B should be BLOCKED (orphaned duplicate present)")
+          if gates.get("A") != "CLEAR":
+              problems.append("gate A should be CLEAR (every demo page is indexable)")
+          thin = [f["pages"] for f in d["findings"] if f["id"] == "S3-THIN"]
+          if thin != [["/about.html"]]:
+              problems.append("S3-THIN should fire on /about.html only, got %r" % thin)
+          if problems:
+              print("\n".join(problems)); sys.exit(1)
+          print("demo site: all %d planted defects detected, gates correct" % len(required))
+          PY

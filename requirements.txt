@@ -1,0 +1,6 @@
+# Core crawler and auditor.
+beautifulsoup4>=4.9
+lxml>=4.6
+
+# Only needed for http-mode crawling (--mode http). fs mode has no network use.
+requests>=2.25

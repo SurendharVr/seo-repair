@@ -1,0 +1,441 @@
+<title>SEO Repair Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+/* ---- Light palette: complete token set on bare :root ---- */
+:root{
+  --ground:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eceff3;
+  --ink:#171d26;
+  --ink-2:#4a5666;
+  --ink-3:#78859a;
+  --line:#dbe1e9;
+  --line-2:#c3ccd8;
+  --accent:#2c3fa8;
+  --accent-soft:#e6e9f8;
+  --accent-ink:#ffffff;
+
+  --sev-critical:#a4193d;
+  --sev-high:#c2521a;
+  --sev-medium:#8a6512;
+  --sev-low:#5c6b7e;
+  --sev-critical-bg:#fae7ec;
+  --sev-high-bg:#fbebe1;
+  --sev-medium-bg:#f8f0dc;
+  --sev-low-bg:#e9edf2;
+
+  --ok:#1f6b4a;
+  --ok-bg:#e2f0e9;
+  --block:#a4193d;
+  --block-bg:#fae7ec;
+
+  --radius:3px;
+  --measure:68ch;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#10141a;
+    --surface:#171c24;
+    --surface-2:#1e242e;
+    --ink:#e7ecf3;
+    --ink-2:#a9b4c3;
+    --ink-3:#7a8698;
+    --line:#28303b;
+    --line-2:#39434f;
+    --accent:#8ea0f5;
+    --accent-soft:#1c2340;
+    --accent-ink:#0d1017;
+
+    --sev-critical:#f2809b;
+    --sev-high:#f0a06f;
+    --sev-medium:#ddbc63;
+    --sev-low:#96a4b6;
+    --sev-critical-bg:#331520;
+    --sev-high-bg:#332014;
+    --sev-medium-bg:#2e2717;
+    --sev-low-bg:#222932;
+
+    --ok:#6cc39a;
+    --ok-bg:#14291f;
+    --block:#f2809b;
+    --block-bg:#331520;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#10141a;
+  --surface:#171c24;
+  --surface-2:#1e242e;
+  --ink:#e7ecf3;
+  --ink-2:#a9b4c3;
+  --ink-3:#7a8698;
+  --line:#28303b;
+  --line-2:#39434f;
+  --accent:#8ea0f5;
+  --accent-soft:#1c2340;
+  --accent-ink:#0d1017;
+
+  --sev-critical:#f2809b;
+  --sev-high:#f0a06f;
+  --sev-medium:#ddbc63;
+  --sev-low:#96a4b6;
+  --sev-critical-bg:#331520;
+  --sev-high-bg:#332014;
+  --sev-medium-bg:#2e2717;
+  --sev-low-bg:#222932;
+
+  --ok:#6cc39a;
+  --ok-bg:#14291f;
+  --block:#f2809b;
+  --block-bg:#331520;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;
+  font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 80px;display:flex;flex-direction:column;gap:38px}
+h1,h2,h3{font-family:Archivo,"IBM Plex Sans",system-ui,sans-serif;text-wrap:balance;margin:0}
+h1{font-size:clamp(28px,4.2vw,42px);font-weight:700;letter-spacing:-.022em;line-height:1.08}
+h2{font-size:19px;font-weight:600;letter-spacing:-.012em}
+h3{font-size:15px;font-weight:600}
+a{color:var(--accent)}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+}
+
+/* ---- masthead ---- */
+.masthead{display:flex;flex-direction:column;gap:14px;
+  border-bottom:1px solid var(--line-2);padding-bottom:26px}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13px;color:var(--ink-2)}
+.meta-row .mono{color:var(--ink)}
+
+/* ---- summary tiles ---- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.tile{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px 16px 14px;display:flex;flex-direction:column;gap:6px;
+  border-left:3px solid var(--stripe,var(--line-2));
+}
+.tile .n{font-family:Archivo,sans-serif;font-size:32px;font-weight:700;line-height:1;
+  font-variant-numeric:tabular-nums;color:var(--stripe,var(--ink))}
+.tile.is-zero .n{color:var(--ink-3)}
+.tile .lbl{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+
+/* ---- the stage rail: the pipeline is the thesis ---- */
+.rail{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+.rail-scroll{overflow-x:auto;padding-bottom:4px}
+.stages{display:flex;align-items:stretch;gap:0;min-width:660px}
+.stage{
+  flex:1;padding:12px 14px;border-top:3px solid var(--stripe,var(--line-2));
+  display:flex;flex-direction:column;gap:5px;min-width:0;
+}
+.stage .num{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);letter-spacing:.1em}
+.stage .nm{font-size:13px;font-weight:600;line-height:1.25}
+.stage .ct{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);
+  font-variant-numeric:tabular-nums}
+.stage.clean .ct{color:var(--ok)}
+.gatemark{
+  display:flex;align-items:center;padding:0 2px;flex:0 0 auto;
+}
+.gatemark span{
+  font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.08em;
+  writing-mode:vertical-rl;transform:rotate(180deg);
+  padding:6px 3px;border-radius:2px;
+}
+.gate-clear span{background:var(--ok-bg);color:var(--ok)}
+.gate-block span{background:var(--block-bg);color:var(--block)}
+
+/* ---- gates ---- */
+.gates{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:12px}
+.gate{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px;display:flex;flex-direction:column;gap:8px;
+}
+.gate-head{display:flex;align-items:center;gap:10px}
+.pill{
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:2px;white-space:nowrap;
+}
+.pill.clear{background:var(--ok-bg);color:var(--ok)}
+.pill.blocked{background:var(--block-bg);color:var(--block)}
+.gate h3{flex:1;min-width:0}
+.gate p{margin:0;font-size:13.5px;color:var(--ink-2);max-width:var(--measure)}
+
+/* ---- findings ---- */
+.stage-block{display:flex;flex-direction:column;gap:12px}
+.stage-hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  border-bottom:1px solid var(--line-2);padding-bottom:8px}
+.stage-hd .cnt{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.f{
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--stripe);
+  border-radius:var(--radius);padding:13px 15px;display:flex;flex-direction:column;gap:7px;
+}
+.f-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.f-id{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:500;color:var(--ink-2)}
+.f-msg{font-size:14px;max-width:var(--measure)}
+.f-pages{display:flex;flex-wrap:wrap;gap:5px}
+.u{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--surface-2);
+  color:var(--ink-2);padding:2px 6px;border-radius:2px;border:1px solid var(--line)}
+.ev{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:2px;
+  padding:7px 9px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+.ev b{color:var(--ink-2);font-weight:500}
+
+/* ---- tables ---- */
+.tbl-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:9px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td .u{font-size:11.5px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;vertical-align:1px}
+
+/* ---- handoff ---- */
+.handoffs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.ho{background:var(--surface);border:1px dashed var(--line-2);border-radius:var(--radius);
+  padding:15px;display:flex;flex-direction:column;gap:6px}
+.ho .where{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent)}
+.ho p{margin:0;font-size:13px;color:var(--ink-2);max-width:var(--measure)}
+
+.note{font-size:13.5px;color:var(--ink-2);max-width:var(--measure)}
+.foot{border-top:1px solid var(--line-2);padding-top:18px;font-size:12.5px;color:var(--ink-3);
+  max-width:var(--measure)}
+section{display:flex;flex-direction:column;gap:14px}
+@media (max-width:640px){
+  .wrap{padding:26px 15px 60px;gap:30px}
+  .tile .n{font-size:26px}
+}
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="eyebrow">SEO Repair &middot; crawl-driven audit</div>
+    <h1 id="site">&nbsp;</h1>
+    <div class="meta-row" id="meta"></div>
+  </header>
+
+  <section>
+    <div class="tiles" id="tiles"></div>
+    <p class="note" id="tiernote">
+      Every figure here was measured directly from the crawl. Search volume, keyword
+      difficulty, backlink data and field Core Web Vitals are absent by design &mdash; they
+      cannot be observed from a codebase, so they appear as handoff actions below rather
+      than as estimates.
+    </p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Repair pipeline</div>
+    <div class="rail">
+      <div class="rail-scroll"><div class="stages" id="rail"></div></div>
+    </div>
+    <div class="gates" id="gates"></div>
+  </section>
+
+  <section id="vitals-sec" hidden>
+    <div class="eyebrow">Core Web Vitals &middot; measured, lab</div>
+    <h2>Lighthouse</h2>
+    <p class="note" id="vitals-caveat"></p>
+    <div class="tbl-scroll"><table id="vitals-tbl"></table></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Findings</div>
+    <h2>By stage, in repair order</h2>
+    <div id="findings" style="display:flex;flex-direction:column;gap:30px"></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Pages</div>
+    <h2>Crawled</h2>
+    <div class="tbl-scroll"><table id="pages-tbl"></table></div>
+    <div id="intentional"></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Handoff</div>
+    <h2>Requires tools outside this environment</h2>
+    <div class="handoffs" id="handoffs"></div>
+  </section>
+
+  <footer class="foot" id="foot"></footer>
+</div>
+
+<script>
+const DATA = /*__DATA__*/ null;
+
+const SEV = ["critical","high","medium","low"];
+const sevVar = s => `var(--sev-${s})`;
+const el = (t,c,x) => { const n=document.createElement(t); if(c)n.className=c;
+  if(x!==undefined)n.textContent=x; return n; };
+const STAGE_NAMES = {1:"Crawl & Indexing",2:"Architecture",3:"Content & On-Page",
+  4:"Performance",5:"Structured Data",6:"Authority",7:"QA & Monitoring"};
+
+function render(d){
+  document.getElementById("site").textContent = d.site;
+  document.title = d.site + " \u2014 SEO Repair";
+
+  const meta = document.getElementById("meta");
+  [["Generated",d.generated],["Pages",String(d.meta.page_count)],
+   ["Mode",d.meta.mode],["Source",d.meta.source]].forEach(([k,v])=>{
+    const s=el("div"); s.append(el("span","",k+" "), el("span","mono",v)); meta.append(s);
+  });
+
+  // severity tiles
+  const tiles=document.getElementById("tiles");
+  const total=SEV.reduce((a,s)=>a+(d.counts[s]||0),0);
+  SEV.forEach(s=>{
+    const n=d.counts[s]||0, t=el("div","tile"+(n?"":" is-zero"));
+    t.style.setProperty("--stripe", n?sevVar(s):"var(--line-2)");
+    t.append(el("div","n",String(n)), el("div","lbl",s));
+    tiles.append(t);
+  });
+  const t=el("div","tile"); t.style.setProperty("--stripe","var(--accent)");
+  t.append(el("div","n",String(total)), el("div","lbl","total"));
+  tiles.append(t);
+
+  // stage rail with gates interleaved \u2014 the ordering is the point
+  const rail=document.getElementById("rail");
+  const gateAfter={1:d.gates[0],2:d.gates[1],5:d.gates[2]};
+  for(let i=1;i<=7;i++){
+    const items=d.findings.filter(f=>f.stage===i);
+    const worst=SEV.find(s=>items.some(f=>f.severity===s));
+    const st=el("div","stage"+(items.length?"":" clean"));
+    st.style.setProperty("--stripe", worst?sevVar(worst):"var(--line-2)");
+    st.append(el("div","num",String(i).padStart(2,"0")),
+              el("div","nm",STAGE_NAMES[i]),
+              el("div","ct", items.length? items.length+(items.length===1?" finding":" findings") : "clear"));
+    rail.append(st);
+    const g=gateAfter[i];
+    if(g){
+      const blocked=g.status==="BLOCKED";
+      const m=el("div","gatemark "+(blocked?"gate-block":"gate-clear"));
+      m.append(el("span","","GATE "+g.gate));
+      m.title=g.name+" \u2014 "+g.status;
+      rail.append(m);
+    }
+  }
+
+  // gates
+  const gw=document.getElementById("gates");
+  d.gates.forEach(g=>{
+    const c=el("div","gate"), h=el("div","gate-head");
+    h.append(el("h3","","Gate "+g.gate+" \u00b7 "+g.name),
+             el("span","pill "+(g.status==="BLOCKED"?"blocked":"clear"),g.status));
+    c.append(h, el("p","",g.rule), el("div","eyebrow",g.detail));
+    gw.append(c);
+  });
+
+  // vitals
+  if(d.vitals && d.vitals.runs && d.vitals.runs.length){
+    document.getElementById("vitals-sec").hidden=false;
+    document.getElementById("vitals-caveat").textContent=d.vitals.caveat;
+    const tb=document.getElementById("vitals-tbl");
+    tb.innerHTML="<thead><tr><th>Page</th><th>Profile</th><th>LCP</th><th>CLS</th>"+
+                 "<th>TBT</th><th>Score</th></tr></thead>";
+    const bd=el("tbody");
+    d.vitals.runs.forEach(r=>{
+      const m=r.metrics, tr=el("tr");
+      tr.append(cellU(r.page), td(r.profile),
+        num(m["largest-contentful-paint"], v=>Math.round(v)+" ms", v=>v>4000?"critical":v>2500?"medium":null),
+        num(m["cumulative-layout-shift"], v=>v.toFixed(3), v=>v>0.25?"critical":v>0.1?"medium":null),
+        num(m["total-blocking-time"], v=>Math.round(v)+" ms", v=>v>600?"high":v>200?"medium":null),
+        num(m._score, v=>Math.round(v*100), v=>v<0.5?"high":v<0.9?"medium":null));
+      bd.append(tr);
+    });
+    tb.append(bd);
+  }
+
+  // findings by stage
+  const fw=document.getElementById("findings");
+  for(let i=1;i<=7;i++){
+    const items=d.findings.filter(f=>f.stage===i);
+    if(!items.length) continue;
+    items.sort((a,b)=>SEV.indexOf(a.severity)-SEV.indexOf(b.severity));
+    const blk=el("div","stage-block"), hd=el("div","stage-hd");
+    hd.append(el("h2","","Stage "+i+" \u00b7 "+STAGE_NAMES[i]),
+              el("span","cnt", items.length+" \u00b7 batch B"+i));
+    blk.append(hd);
+    items.forEach(f=>{
+      const c=el("div","f"); c.style.setProperty("--stripe",sevVar(f.severity));
+      const top=el("div","f-top");
+      const p=el("span","pill",f.severity);
+      p.style.background=`var(--sev-${f.severity}-bg)`; p.style.color=sevVar(f.severity);
+      top.append(p, el("span","f-id",f.id));
+      if(f.affects) top.append(el("span","eyebrow", f.affects+" pages"));
+      c.append(top, el("div","f-msg",f.message));
+      const pg=el("div","f-pages");
+      f.pages.slice(0,8).forEach(u=>pg.append(el("span","u",u)));
+      if(f.pages.length>8) pg.append(el("span","eyebrow","+"+(f.pages.length-8)+" more"));
+      c.append(pg);
+      if(f.evidence){ const e=el("div","ev"); e.append(el("b","","evidence  "), document.createTextNode(f.evidence)); c.append(e); }
+      blk.append(c);
+    });
+    fw.append(blk);
+  }
+
+  // pages
+  const pt=document.getElementById("pages-tbl");
+  pt.innerHTML="<thead><tr><th>URL</th><th>Title</th><th>Words</th><th>Schema</th></tr></thead>";
+  const pb=el("tbody");
+  d.pages.forEach(p=>{
+    const tr=el("tr");
+    const c1=el("td");
+    const dot=el("span","dot"); dot.style.background=p.indexable?"var(--ok)":"var(--ink-3)";
+    dot.title=p.indexable?"indexable":"not indexed (deliberate)";
+    c1.append(dot, el("span","u",p.url));
+    tr.append(c1, td(p.title||"\u2014"), num(p.words, v=>v, v=>v<250?"medium":null),
+              td(p.jsonld && p.jsonld.length ? p.jsonld.join(", ") : "\u2014"));
+    pb.append(tr);
+  });
+  pt.append(pb);
+
+  if(d.intentional && d.intentional.length){
+    const w=document.getElementById("intentional");
+    w.append(el("div","eyebrow","Deliberate exclusions \u2014 not defects"));
+    const ul=el("div","f-pages"); ul.style.marginTop="8px";
+    d.intentional.forEach(i=>{
+      const s=el("span","u", i.url+"  \u00b7  "+i.why.join("; ")); ul.append(s);
+    });
+    w.append(ul);
+  }
+
+  // handoffs
+  const hw=document.getElementById("handoffs");
+  d.handoffs.forEach(h=>{
+    const c=el("div","ho");
+    c.append(el("h3","",h.name), el("div","where",h.where), el("p","",h.why));
+    hw.append(c);
+  });
+
+  document.getElementById("foot").textContent =
+    "Generated by the seo-repair skill on "+d.generated+". Every finding cites evidence "+
+    "from the crawl. Nothing in this dashboard was inferred from data the tool could not observe.";
+}
+
+function td(x){ return el("td","",x==null?"\u2014":String(x)); }
+function cellU(u){ const c=el("td"); c.append(el("span","u",u)); return c; }
+function num(v,fmt,sev){
+  const c=el("td","num");
+  if(v==null){ c.textContent="\u2014"; return c; }
+  c.textContent=fmt(v);
+  const s=sev&&sev(v); if(s) c.style.color=sevVar(s);
+  return c;
+}
+
+if(DATA) render(DATA);
+</script>
