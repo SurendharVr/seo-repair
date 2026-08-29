@@ -21,6 +21,32 @@ the page. Building links to either is the most expensive mistake of the three. T
 
 ---
 
+## What a run looks like
+
+Auditing the bundled demo site — the gate lines are the point, and they say *why*, not just *blocked*:
+
+```console
+$ python audit.py --crawl crawl.json --schema schema.json --out findings.json
+22 findings: 1 critical, 6 high, 7 medium, 8 low
+  stage 1: 4
+  stage 2: 6
+  stage 3: 10
+  stage 5: 2
+  gate A (Index before content): CLEAR -- every crawled page is indexable
+  gate B (Architecture before schema): BLOCKED -- 3 page(s) orphaned or pending consolidation: /, /old-home.html, /reviews.html
+  gate C (Everything before authority): BLOCKED -- 7 critical/high finding(s) open in stages 1-5: S1-CANONICAL-CROSS, S1-SITEMAP-ORPHAN, S2-ORPHAN, S2-UNREACHABLE
+```
+
+Each run also produces a self-contained HTML dashboard:
+
+![The seo-repair dashboard: severity totals, the seven-stage repair pipeline with gates drawn between the stages, and the three gate cards showing why each is clear or blocked](docs/dashboard.png)
+
+Note stage 04. Lighthouse was not run here, so Performance reads **not measured** rather
+than *clear* — a stage that produced no findings because nobody looked at it is not a
+stage that passed, and the dashboard will not imply otherwise.
+
+---
+
 ## Two things that make it different
 
 **It refuses to invent numbers.** Search volume, keyword difficulty, backlink counts and

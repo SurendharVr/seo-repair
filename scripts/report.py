@@ -277,8 +277,25 @@ def main():
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(md)
 
+    # Which stages were actually evaluated in this run. A stage that produced no
+    # findings because it never ran is NOT "clear", and labelling it so would be the
+    # same unearned confidence this tool refuses everywhere else.
+    stage5_ran = any(f["stage"] == 5 for f in findings) or bool(args.schema)
+    assessed = {
+        1: {"state": "assessed"},
+        2: {"state": "assessed"},
+        3: {"state": "assessed"},
+        4: {"state": "assessed"} if (vitals and vitals.get("runs"))
+           else {"state": "not-measured", "note": "Lighthouse was not run"},
+        5: {"state": "assessed"} if stage5_ran
+           else {"state": "not-measured", "note": "schema_check.py output was not supplied"},
+        6: {"state": "advisory", "note": "off-page work cannot be measured from a codebase"},
+        7: {"state": "not-run", "note": "populated by verify against a baseline"},
+    }
+
     data = {
         "site": site,
+        "assessed": {str(k): v for k, v in assessed.items()},
         "generated": today,
         "meta": crawl["meta"],
         "counts": {s: sum(1 for x in findings if x["severity"] == s) for s in SEV_ORDER},
