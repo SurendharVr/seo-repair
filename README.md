@@ -3,12 +3,16 @@
 [![tests](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml)
 [![license](https://img.shields.io/github/license/SurendharVr/seo-repair)](LICENSE)
 
-A [Claude Code](https://claude.com/claude-code) skill that treats SEO as a **repair
-system with a dependency order**, not a checklist.
+**Technical SEO audit and repair, as a [Claude Code](https://claude.com/claude-code)
+skill.**
 
-It crawls your site's source, produces evidence-backed findings in that order, proposes
-fixes, and re-verifies after they land. It proposes every edit before applying it, and
-it will not print a number it did not measure.
+A site crawler and audit tool that finds indexing problems, orphan pages, duplicate
+content, broken internal links, thin content, missing canonical tags, keyword
+cannibalization and invalid schema markup — then proposes the fixes, applies the ones
+you approve, and re-verifies with a second crawl.
+
+What makes it different from a checklist: **the order is enforced.** SEO findings are
+not independent, so this treats them as a repair system with a dependency order.
 
 ```
 Crawl → Index → Architecture → Content → On-Page → Performance → Schema → Authority → Monitor
@@ -119,20 +123,18 @@ Four verbs, driven through Claude Code:
 Nothing is edited without approval. `plan` refuses to run without a baseline; `apply`
 refuses without a named, approved batch.
 
-## What it checks
+## What it finds
 
-**Index** — robots.txt, sitemap coverage and contradictions, `noindex`, canonicals
-(missing, cross, broken, off-origin), broken internal links, URL hygiene.
-**Architecture** — orphans, unreachable pages, click depth, inbound-link distribution,
-heading structure, breadcrumbs.
-**Content** — exact and near duplicates (MinHash), keyword cannibalization, thin pages,
-titles, descriptions, alt text, image weight, unused assets.
-**Performance** — Lighthouse LCP/CLS/TBT, reported as *lab* metrics with the localhost
-caveat stated.
-**Schema** — JSON-LD validity, required and recommended properties, and claim
-corroboration against visible page text.
-**Authority** — advisory only. It cannot measure a backlink profile and does not pretend
-to; it produces a human action list and refuses paid-link and PBN tactics outright.
+| Stage | Checks |
+| --- | --- |
+| **Crawling & indexing** | `robots.txt` rules, XML sitemap coverage and contradictions, `noindex` directives, canonical tags (missing, cross-page, broken, off-origin), broken internal links, URL hygiene |
+| **Site architecture** | Orphan pages, unreachable pages, click depth, internal link distribution, heading structure, breadcrumbs |
+| **Content & on-page** | Duplicate and near-duplicate content (MinHash), keyword cannibalization, thin content, title tags, meta descriptions, image alt text, oversized images, unused assets |
+| **Core Web Vitals** | Lighthouse LCP, CLS and TBT — reported as *lab* metrics, with the localhost caveat stated |
+| **Schema markup** | JSON-LD validity, required and recommended properties, and whether the markup's claims are corroborated by visible page text |
+| **Authority / off-page** | Advisory only. It cannot measure a backlink profile and does not pretend to — it produces a human action list, and refuses paid-link and PBN tactics outright |
+
+Findings cite the offending string from your source, so every one is checkable.
 
 ## Limitations, stated plainly
 

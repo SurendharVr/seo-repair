@@ -9,5 +9,20 @@
   },
   "homepage": "https://github.com/SurendharVr/seo-repair",
   "license": "MIT",
-  "keywords": ["seo", "audit", "crawler", "schema", "core-web-vitals", "static-site"]
+  "keywords": [
+    "seo",
+    "seo-audit",
+    "technical-seo",
+    "seo-tools",
+    "site-audit",
+    "crawler",
+    "sitemap",
+    "structured-data",
+    "schema-org",
+    "core-web-vitals",
+    "lighthouse",
+    "duplicate-content",
+    "broken-links",
+    "orphan-pages"
+  ]
 }
