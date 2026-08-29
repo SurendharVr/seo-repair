@@ -43,12 +43,20 @@ missing marketplace `description` before v1.0.0, which is the text users see whe
 browsing marketplaces. Warnings here are user-facing defects, not lint noise.
 
 **4. Version numbers agree.** Bump `.claude-plugin/plugin.json` `version` and add a
-`CHANGELOG.md` entry. `claude plugin tag --dry-run` checks that `plugin.json` and the
-enclosing marketplace entry agree before you commit to a tag:
+`CHANGELOG.md` entry, then:
 
 ```bash
 claude plugin tag --dry-run
 ```
+
+Use this as a **check, not as the tagging command.** It verifies that `plugin.json` and
+the enclosing marketplace entry agree on the version, and that the working tree is
+clean — both of which are what you actually want confirmed here.
+
+It would create a tag named `seo-repair--v1.0.0`, which is the convention for a
+monorepo shipping several plugins. This repo ships one plugin and tags plain `vX.Y.Z`
+to match its GitHub releases. Don't mix the two: pick the plain form (below) and let
+`--dry-run` do the validating.
 
 **5. Nothing untracked is about to ship.**
 
