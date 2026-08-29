@@ -1,5 +1,6 @@
 {
   "name": "seo-repair",
+  "description": "SEO tooling for Claude Code. Currently one plugin: seo-repair, a crawl-driven audit and repair system for site codebases.",
   "owner": {
     "name": "surendhar-v",
     "url": "https://github.com/SurendharVr"
