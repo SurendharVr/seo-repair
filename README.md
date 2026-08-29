@@ -131,6 +131,15 @@ deliberate `noindex`, finding grouping, title thresholds, heading order, schema 
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,
 not *"make it pass"*.
 
+## Contributing
+
+Bug reports and pull requests welcome, particularly on non-Windows platforms — the
+Lighthouse integration is the least-tested part of this project.
+
+If you change a rule, three things move together: the counts and defect table in
+[`examples/demo-site/EXPECTED.md`](examples/demo-site/EXPECTED.md), and the `required`
+finding ids in the CI workflow. [`RELEASING.md`](RELEASING.md) has the full checklist.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
