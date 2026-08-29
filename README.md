@@ -1,6 +1,7 @@
 # seo-repair
 
 [![tests](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml)
+[![license](https://img.shields.io/github/license/SurendharVr/seo-repair)](LICENSE)
 
 A [Claude Code](https://claude.com/claude-code) skill that treats SEO as a **repair
 system with a dependency order**, not a checklist.
