@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.1
 
 Two http-mode defects, both found by scoring the tool against its own demo fixture
 alongside Lighthouse rather than by reading the code.
