@@ -61,6 +61,12 @@ it. Do not silently comply, and do not silently refuse.
 | **B** — Architecture before schema | No schema batch for a page flagged orphaned or as a merge candidate | Markup on a page about to be deleted or consolidated is discarded work. |
 | **C** — Everything before authority | Stage 6 off-page work is refused until stages 1–5 verify clean | Links pointing at pages Google can't crawl, index, or understand are the most expensive form of wasted effort. |
 
+Gate B has a third state, `NOT ASSESSED`. Only fs mode enumerates every page, so only fs
+mode can *prove* a site has no orphans; an http crawl reaches pages via links and the
+sitemap, so silence from it is absence of evidence, not evidence of absence. In http mode
+with no orphan findings the gate reports `NOT ASSESSED` and names the fs re-run that would
+clear it. `BLOCKED` outranks both — an orphan the http walk did see is real either way.
+
 ---
 
 ## Do no harm
@@ -132,7 +138,7 @@ Run before and after changing anything in `scripts/`:
 python tests/test_skill.py
 ```
 
-35 tests, no fixture files -- each builds a throwaway site in a temp directory. They
+52 tests, no fixture files -- each builds a throwaway site in a temp directory. They
 pin down calibration decisions made after real false positives (build-dir exclusion,
 deliberate noindex, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries). A failure means "was this behaviour meant to change",
@@ -146,7 +152,13 @@ not "make it pass".
   excluded; without that, a `dist/` copy makes every real page look like duplicate
   content.
 - **http** — crawls a running dev server or live URL for real status codes and
-  redirects. Use this when indexability or redirect behaviour is the question.
+  redirects. Use this when indexability or redirect behaviour is the question. The
+  frontier is seeded from `sitemap.xml` as well as `--start`, so a page the sitemap
+  lists but nothing links to is still fetched; URLs that 404 are recorded as skipped
+  rather than admitted as pages, which is what keeps `S1-SITEMAP-ORPHAN` and
+  `S1-BROKEN-LINK` meaningful. A page that is neither linked nor listed is unreachable
+  over HTTP by construction — that is why fs is the default, and why Gate B reports
+  `NOT ASSESSED` rather than `CLEAR` here.
 
 ---
 

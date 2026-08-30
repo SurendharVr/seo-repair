@@ -493,13 +493,18 @@ def audit(doc, vitals=None, schema_findings=None):
     withheld = sorted(u for u, (ok, _) in indexable.items()
                       if not ok and u not in {i["url"] for i in intentional})
     return {"findings": out, "intentional": intentional,
-            "gates": compute_gates(out, withheld)}
+            "gates": compute_gates(out, withheld, doc["meta"].get("mode", "fs"))}
 
 
 GATE_B_IDS = {"S2-ORPHAN", "S2-UNREACHABLE", "S3-DUPLICATE-EXACT", "S3-NEAR-DUPLICATE"}
 
+GATE_B_UNASSESSED = (
+    "orphan detection needs a complete page list; an http crawl discovers pages only via "
+    "links and sitemap.xml, so a page that is neither linked nor listed cannot be seen. "
+    "Re-run in fs mode against the codebase to clear this gate.")
 
-def compute_gates(findings, withheld):
+
+def compute_gates(findings, withheld, mode="fs"):
     """The three repair gates. This is the ONLY definition -- the report and the
     dashboard consume it rather than re-deriving it, so the status can never
     contradict the rule printed beside it.
@@ -511,6 +516,16 @@ def compute_gates(findings, withheld):
       B  blocked while a page's very existence is unsettled -- orphaned, unreachable,
          or a merge candidate. Schema on such a page may be discarded with the page.
       C  blocked while any critical/high finding remains open in stages 1-5.
+
+    Gate B has a third state. A gate may only be *cleared* by a check that could
+    actually run: fs mode enumerates the filesystem and so can prove a site has no
+    orphans, but an http walk cannot -- a page that is neither linked nor listed in
+    the sitemap is invisible to it, so silence there is absence of evidence, not
+    evidence of absence. Reporting CLEAR from it once told a user "no orphan or
+    duplicate pages" on a site with two orphans, and unblocked schema work on pages
+    that were merge candidates. Positive findings are trustworthy in either mode, so
+    BLOCKED still wins over NOT ASSESSED. This is the same principle as the report's
+    per-stage `assessed` state: a check nobody could run is not a check that passed.
     """
     contradiction = [f for f in findings if f["id"] == "S1-INDEX-CONTRADICTION"]
     gate_b_pages = sorted({u for f in findings if f["id"] in GATE_B_IDS for u in f["pages"]})
@@ -528,11 +543,14 @@ def compute_gates(findings, withheld):
                      else "every crawled page is indexable")),
          "pages": withheld},
         {"gate": "B", "name": "Architecture before schema",
-         "status": "BLOCKED" if gate_b_pages else "CLEAR",
+         "status": ("BLOCKED" if gate_b_pages
+                    else "CLEAR" if mode == "fs" else "NOT ASSESSED"),
          "rule": "No schema work on orphaned or merge-candidate pages.",
          "detail": ("{0} page(s) orphaned or pending consolidation: {1}".format(
                         len(gate_b_pages), ", ".join(gate_b_pages[:4]))
-                    if gate_b_pages else "no orphan or duplicate pages"),
+                    if gate_b_pages
+                    else "no orphan or duplicate pages" if mode == "fs"
+                    else GATE_B_UNASSESSED),
          "pages": gate_b_pages},
         {"gate": "C", "name": "Everything before authority",
          "status": "BLOCKED" if blockers_c else "CLEAR",

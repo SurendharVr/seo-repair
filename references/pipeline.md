@@ -63,6 +63,17 @@ Condition: page is flagged `S2-ORPHAN`, `S2-UNREACHABLE`, `S3-DUPLICATE-EXACT`, 
 `S3-NEAR-DUPLICATE`.
 Effect: do not propose a schema batch for it. Resolve the merge/link decision first.
 
+**Gate B has three states, not two.** A gate may only be *cleared* by a check that could
+actually run. fs mode enumerates the filesystem, so it can prove a site has no orphans.
+An http crawl cannot: it discovers pages via links and `sitemap.xml`, so a page that is
+neither linked nor listed is invisible to it, and silence there is absence of evidence
+rather than evidence of absence. In http mode with no orphan findings, Gate B reports
+**`NOT ASSESSED`** and names the fs re-run that would clear it. `BLOCKED` still outranks
+it — an orphan the http walk *did* see is real either way. Same principle as the report's
+per-stage `assessed` state: a check nobody could run is not a check that passed. Do not
+"simplify" this back to a findings-presence test; that version once reported "no orphan
+or duplicate pages" on a site with two orphans.
+
 **Gate C — Everything before authority.**
 Condition: any critical or high finding remains open in stages 1–5.
 Effect: refuse stage 6. Name the blocking findings.

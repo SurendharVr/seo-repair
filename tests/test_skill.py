@@ -555,5 +555,129 @@ class TestStageFiveOwnership(Base):
         self.assertEqual(stage5, [], "stage 5 must come only from schema_check.py")
 
 
+# ------------------------------------------------------- http mode: discovery
+
+class TestGateBIsModeAware(Base):
+    """A gate may only be CLEARED by a check that could actually run.
+
+    http mode discovers pages via links and the sitemap, so it can never prove a site
+    has no orphans -- a page neither linked nor listed is invisible to it. It once
+    printed 'CLEAR -- no orphan or duplicate pages' on a site with two orphans, which
+    also unblocked schema work on pages that were merge candidates.
+    """
+
+    def _gate_b(self, mode):
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="/about.html">About</a> ' + ("word " * 300) + "</p>"))
+        self.fx.write("about.html", page_html(title="An About Page With A Fine Title"))
+        doc = self.fx.crawl()
+        doc["meta"]["mode"] = mode
+        return [g for g in audit.audit(doc)["gates"] if g["gate"] == "B"][0]
+
+    def test_fs_mode_can_clear_gate_b(self):
+        self.assertEqual(self._gate_b("fs")["status"], "CLEAR")
+
+    def test_http_mode_cannot_clear_gate_b(self):
+        gate_b = self._gate_b("http")
+        self.assertEqual(gate_b["status"], "NOT ASSESSED",
+                         "silence from a check that could not run is not a pass")
+        self.assertIn("fs mode", gate_b["detail"], "say what would clear it")
+
+    def test_positive_findings_still_block_in_http_mode(self):
+        """BLOCKED outranks NOT ASSESSED -- an orphan the http walk *did* see is real."""
+        self.fx.write("index.html", page_html())
+        self.fx.write("stray.html", page_html(title="A Stray Page Nothing Links To"))
+        doc = self.fx.crawl()
+        doc["meta"]["mode"] = "http"
+        gate_b = [g for g in audit.audit(doc)["gates"] if g["gate"] == "B"][0]
+        self.assertEqual(gate_b["status"], "BLOCKED")
+        self.assertIn("/stray.html", gate_b["pages"])
+
+
+class TestHttpSitemapSeeding(unittest.TestCase):
+    """REGRESSION: crawl_http only followed links, so a page that was unlinked but
+    listed in sitemap.xml was never fetched -- and was then reported as
+    S1-SITEMAP-ORPHAN ('does not exist in the crawl') despite serving a 200."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+
+        import functools
+        import http.server
+        import threading
+
+        cls.root = tempfile.mkdtemp(prefix="seo-repair-http-test-")
+        body = "<h1>H</h1><p>" + ("word " * 300) + "</p>"
+
+        def w(name, html):
+            with open(os.path.join(cls.root, name), "w", encoding="utf-8") as f:
+                f.write(html)
+
+        w("index.html", page_html(body='<h1>H</h1><p><a href="/linked.html">L</a> ' +
+                                       ("word " * 300) + "</p>"))
+        w("linked.html", page_html(title="A Linked Page With An Adequate Title", body=body))
+        # Listed in the sitemap, linked from nowhere. The whole point of the fixture.
+        w("stray.html", page_html(title="A Stray Page With An Adequate Title", body=body))
+        w("sitemap.xml",
+          '<?xml version="1.0" encoding="UTF-8"?>\n'
+          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+          "<url><loc>https://example.com/</loc></url>"
+          "<url><loc>https://example.com/linked.html</loc></url>"
+          "<url><loc>https://example.com/stray.html</loc></url>"
+          "<url><loc>https://example.com/gone.html</loc></url>"
+          "</urlset>")
+
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=cls.root)
+        cls.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        cls.httpd.RequestHandlerClass.log_message = lambda *a, **k: None
+        cls.base = "http://127.0.0.1:{0}/".format(cls.httpd.server_address[1])
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+        pages, _, robots, sitemap, _, _, cls.skipped, _, _ = crawl.crawl_http(cls.base)
+        cls.paths = sorted(p["url"] for p in pages)
+        for p in pages:
+            p["robots_allowed"], p["robots_rule"] = True, None
+        sm_urls, _ = S.parse_sitemap(sitemap)
+        doc = {
+            "meta": {"source": cls.base, "mode": "http", "page_count": len(pages),
+                     "base_url": None, "excluded_dirs_present": []},
+            "robots": {"found": bool(robots), "sitemaps": [], "groups": [], "raw": robots},
+            "sitemap": {"found": bool(sitemap), "urls": sm_urls, "notes": []},
+            "assets": [], "pages": pages, "extras": {},
+            "referenced_assets": [], "referenced_basenames": [],
+        }
+        cls.found = [(f["id"], tuple(f["pages"])) for f in audit.audit(doc)["findings"]]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def ids_for(self, path):
+        return [i for i, pgs in self.found if pgs == (path,)]
+
+    def test_unlinked_sitemap_page_is_crawled(self):
+        self.assertIn("/stray.html", self.paths,
+                      "a sitemap entry must seed the crawl frontier")
+
+    def test_live_unlinked_page_is_not_called_a_dead_sitemap_url(self):
+        self.assertNotIn("S1-SITEMAP-ORPHAN", self.ids_for("/stray.html"),
+                         "/stray.html returns 200; it is an orphan, not a dead sitemap URL")
+
+    def test_live_unlinked_page_is_reported_as_an_orphan(self):
+        self.assertIn("S2-ORPHAN", self.ids_for("/stray.html"))
+
+    def test_genuinely_missing_sitemap_url_still_reported(self):
+        """The fix must not silence the finding it was confused with: /gone.html is a
+        404, so it must stay out of `pages` and keep firing S1-SITEMAP-ORPHAN."""
+        self.assertNotIn("/gone.html", self.paths)
+        self.assertIn("S1-SITEMAP-ORPHAN", self.ids_for("/gone.html"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

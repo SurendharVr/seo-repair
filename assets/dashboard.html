@@ -156,6 +156,9 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospa
 }
 .gate-clear span{background:var(--ok-bg);color:var(--ok)}
 .gate-block span{background:var(--block-bg);color:var(--block)}
+/* A gate nobody could assess reads as neutral, never as a pass -- same rule as the
+   stage rail's "not measured" state. */
+.gate-unassessed span{background:var(--surface-2);color:var(--ink-3)}
 
 /* ---- gates ---- */
 .gates{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:12px}
@@ -170,6 +173,7 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospa
 }
 .pill.clear{background:var(--ok-bg);color:var(--ok)}
 .pill.blocked{background:var(--block-bg);color:var(--block)}
+.pill.unassessed{background:var(--surface-2);color:var(--ink-3)}
 .gate h3{flex:1;min-width:0}
 .gate p{margin:0;font-size:13.5px;color:var(--ink-2);max-width:var(--measure)}
 
@@ -286,6 +290,11 @@ const el = (t,c,x) => { const n=document.createElement(t); if(c)n.className=c;
   if(x!==undefined)n.textContent=x; return n; };
 const STAGE_NAMES = {1:"Crawl & Indexing",2:"Architecture",3:"Content & On-Page",
   4:"Performance",5:"Structured Data",6:"Authority",7:"QA & Monitoring"};
+// Three states, not two. Anything that is not an explicit CLEAR must not be painted
+// as a pass -- "NOT ASSESSED" used to fall through to the green pill.
+const gateClass = s => s==="BLOCKED" ? "gate-block"
+                     : s==="CLEAR"   ? "gate-clear"
+                     : "gate-unassessed";
 
 function render(d){
   document.getElementById("site").textContent = d.site;
@@ -339,8 +348,7 @@ function render(d){
     rail.append(st);
     const g=gateAfter[i];
     if(g){
-      const blocked=g.status==="BLOCKED";
-      const m=el("div","gatemark "+(blocked?"gate-block":"gate-clear"));
+      const m=el("div","gatemark "+gateClass(g.status));
       m.append(el("span","","GATE "+g.gate));
       m.title=g.name+" \u2014 "+g.status;
       rail.append(m);
@@ -352,7 +360,7 @@ function render(d){
   d.gates.forEach(g=>{
     const c=el("div","gate"), h=el("div","gate-head");
     h.append(el("h3","","Gate "+g.gate+" \u00b7 "+g.name),
-             el("span","pill "+(g.status==="BLOCKED"?"blocked":"clear"),g.status));
+             el("span","pill "+gateClass(g.status).replace("gate-",""),g.status));
     c.append(h, el("p","",g.rule), el("div","eyebrow",g.detail));
     gw.append(c);
   });

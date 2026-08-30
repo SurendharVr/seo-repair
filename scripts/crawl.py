@@ -353,6 +353,24 @@ def crawl_fs(root, base_url=None):
 
 # ----------------------------------------------------------------- http mode
 
+def fetch_site_files(sess, origin, timeout):
+    """robots.txt and sitemap.xml, fetched before the walk because the sitemap seeds it."""
+    robots_txt = sitemap_xml = ""
+    try:
+        rr = sess.get(origin + "/robots.txt", timeout=timeout)
+        if rr.status_code == 200 and "html" not in rr.headers.get("Content-Type", "").lower():
+            robots_txt = rr.text
+    except Exception:
+        pass
+    try:
+        sr = sess.get(origin + "/sitemap.xml", timeout=timeout)
+        if sr.status_code == 200:
+            sitemap_xml = sr.text
+    except Exception:
+        pass
+    return robots_txt, sitemap_xml
+
+
 def crawl_http(start, max_pages=300, timeout=20):
     import requests
 
@@ -360,8 +378,25 @@ def crawl_http(start, max_pages=300, timeout=20):
     sess.headers["User-Agent"] = "seo-repair-crawler/1.0 (+local audit)"
     origin = "{0}://{1}".format(*urlsplit(start)[:2])
 
-    seen, pages, queue = set(), [], deque([S.canonical_http_path(urlsplit(start).path or "/")])
+    # The sitemap is fetched first because it seeds the frontier. A pure link walk cannot
+    # reach a page nothing links to, so a page that is listed in the sitemap but unlinked
+    # -- exactly the population most likely to have an indexing problem -- used to be
+    # invisible, and was then reported as S1-SITEMAP-ORPHAN ("listed in sitemap.xml does
+    # not exist in the crawl") despite serving a healthy 200. Seeding from the sitemap is
+    # what Screaming Frog and Sitebulb both do by default, and it makes the frontier match
+    # what a search engine actually discovers: links plus the sitemap.
+    robots_txt, sitemap_xml = fetch_site_files(sess, origin, timeout)
+
+    start_path = S.canonical_http_path(urlsplit(start).path or "/")
+    seen, pages, queue = set(), [], deque([start_path])
     skipped = []
+
+    for loc in S.parse_sitemap(sitemap_xml)[0]:
+        # Sitemap entries carry the production origin, which is not the origin being
+        # crawled (localhost, staging). Only the path transfers.
+        sp = S.canonical_http_path(urlsplit(loc).path or "/")
+        if sp != start_path:
+            queue.append(sp)
 
     while queue and len(pages) < max_pages:
         path = queue.popleft()
@@ -377,6 +412,15 @@ def crawl_http(start, max_pages=300, timeout=20):
 
         ctype = r.headers.get("Content-Type", "")
         if "html" not in ctype.lower():
+            continue
+
+        if r.status_code >= 400:
+            # A URL that does not resolve is not a page of the site. Recording it as one
+            # would put it in the alias index and so silence both S1-SITEMAP-ORPHAN (for a
+            # sitemap entry that really is dead) and S1-BROKEN-LINK (for a link pointing at
+            # it). The status is kept as evidence instead.
+            skipped.append({"url": path, "reason": "HTTP {0}".format(r.status_code),
+                            "status": r.status_code})
             continue
 
         rec = extract_page(path, r.text)
@@ -397,20 +441,6 @@ def crawl_http(start, max_pages=300, timeout=20):
                 nxt = S.canonical_http_path(l["resolved"])
                 if nxt not in seen:
                     queue.append(nxt)
-
-    robots_txt = sitemap_xml = ""
-    try:
-        rr = sess.get(origin + "/robots.txt", timeout=timeout)
-        if rr.status_code == 200 and "html" not in rr.headers.get("Content-Type", "").lower():
-            robots_txt = rr.text
-    except Exception:
-        pass
-    try:
-        sr = sess.get(origin + "/sitemap.xml", timeout=timeout)
-        if sr.status_code == 200:
-            sitemap_xml = sr.text
-    except Exception:
-        pass
 
     refs = sorted({r for p in pages for r in (p.get('asset_refs') or [])})
     names = sorted({n for p in pages for n in (p.get('asset_basenames') or [])})

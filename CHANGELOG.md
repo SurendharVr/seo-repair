@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+Two http-mode defects, both found by scoring the tool against its own demo fixture
+alongside Lighthouse rather than by reading the code.
+
+- **The http crawl now seeds its frontier from `sitemap.xml`.** It only followed links
+  before, so a page that was unlinked *and* listed in the sitemap — the population most
+  likely to have an indexing problem — was never fetched. It was then reported as
+  `S1-SITEMAP-ORPHAN`, whose message is "listed in sitemap.xml does not exist in the
+  crawl", while actually serving a healthy 200. Anyone acting on that went looking for a
+  dead URL and found a working page. Seeding from the sitemap is what Screaming Frog and
+  Sitebulb do by default, and it makes the frontier match what a search engine discovers.
+- **URLs returning 4xx/5xx are no longer recorded as pages.** They are kept in the crawl's
+  `skipped` list with their status. Admitting them put them in the alias index, which
+  would have silenced `S1-SITEMAP-ORPHAN` for genuinely dead sitemap entries and
+  `S1-BROKEN-LINK` for links pointing at them.
+- **Gate B has a third state, `NOT ASSESSED`.** It was a pure findings-presence test, so
+  in a mode that cannot enumerate pages it turned absence of evidence into a pass —
+  printing "no orphan or duplicate pages" on a site with two orphans, and unblocking
+  schema work on pages that were merge candidates. fs mode still reports `CLEAR`, since
+  walking the filesystem can genuinely prove absence; `BLOCKED` outranks both. Same
+  principle as the report's per-stage `assessed` state. The dashboard paints the new state
+  neutral — it previously mapped everything that was not `BLOCKED` to the green pill.
+- 7 new tests (52 total), including a threaded-HTTP-server fixture pinning the seeding
+  behaviour and the dead-sitemap-URL finding it must not silence.
+
 ## 1.0.0
 
 First public release.
