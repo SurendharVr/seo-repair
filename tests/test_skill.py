@@ -242,6 +242,16 @@ class TestGrouping(Base):
         self.assertIn("S3-DUPLICATE-EXACT", ids)
         self.assertNotIn("S3-CANNIBALIZATION", ids)
 
+    def test_heading_skip_evidence_names_the_skipping_heading(self):
+        """REGRESSION found by the v1.0.3 review: the evidence quoted the first H4
+        after the first H2, which was a legitimate heading, not the one that skipped."""
+        body = ("<h1>Top</h1><h2>Two A</h2><h3>Three</h3><h4>Four fine</h4>"
+                "<h2>Two B</h2><h4>Skipped to four</h4><p>" + "word " * 300 + "</p>")
+        self.fx.write("index.html", page_html(body=body))
+        hits = [f for f in self.fx.audit()["findings"] if f["id"] == "S2-HEADING-SKIP"]
+        self.assertEqual(len(hits), 1)
+        self.assertIn("Skipped to four", hits[0]["evidence"])
+
     def _cannibal_pairs(self):
         pairs = set()
         for f in self.fx.audit()["findings"]:

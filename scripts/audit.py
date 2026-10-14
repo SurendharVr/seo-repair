@@ -277,12 +277,11 @@ def audit(doc, vitals=None, schema_findings=None):
                                "Page has {0} H1 elements.".format(len(h1s)), [p["url"]],
                                evidence=" | ".join(h1s[:3]), recipe="heading-fix"))
         levels = [h["level"] for h in p["headings"]]
-        for a, b in zip(levels, levels[1:]):
+        for i, (a, b) in enumerate(zip(levels, levels[1:])):
             if b > a + 1:
-                idx = levels.index(b, levels.index(a) if a in levels else 0)
                 out.append(finding("S2-HEADING-SKIP", 2, "low",
                                    "Heading level jumps from H{0} to H{1}.".format(a, b), [p["url"]],
-                                   evidence="H{0} -> H{1}: {2}".format(a, b, p["headings"][min(idx, len(p['headings'])-1)]["text"][:80]),
+                                   evidence="H{0} -> H{1}: {2}".format(a, b, p["headings"][i + 1]["text"][:80]),
                                    recipe="heading-fix"))
                 break
 
