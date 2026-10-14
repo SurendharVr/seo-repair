@@ -107,7 +107,7 @@ def known_props(pages):
     return known
 
 
-_NAME_PUNCT = ".,;:!?()[]{}\"'-*|/\\“”‘’–—"
+_NAME_PUNCT = ".,;:!?()[]{}\"'-*|/\\\u201c\u201d\u2018\u2019\u2013\u2014"
 
 
 def _words(s):
