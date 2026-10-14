@@ -1,13 +1,13 @@
 {
-  "name": "seo-repair",
-  "description": "SEO tooling for Claude Code. Currently one plugin: seo-repair, a crawl-driven audit and repair system for site codebases.",
+  "name": "sitemend",
+  "description": "SEO tooling for Claude Code. Currently one plugin: sitemend, a crawl-driven audit and repair system for site codebases.",
   "owner": {
     "name": "surendhar-v",
     "url": "https://github.com/SurendharVr"
   },
   "plugins": [
     {
-      "name": "seo-repair",
+      "name": "sitemend",
       "source": "./",
       "description": "Crawl-driven SEO audit, repair planning and implementation. Ordered gates stop you optimising pages Google cannot index, or building links to pages about to be merged away."
     }

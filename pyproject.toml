@@ -27,11 +27,11 @@ Issues = "https://github.com/SurendharVr/sitemend/issues"
 Changelog = "https://github.com/SurendharVr/sitemend/blob/main/CHANGELOG.md"
 
 [project.scripts]
-sitemend = "sitemend.seo_repair:main"
+sitemend = "sitemend.sitemend:main"
 
 # The skill keeps its flat scripts/ layout (SKILL.md runs them by path). For the wheel,
 # that directory is the `sitemend` package and assets/ rides along inside it, so
-# `seo_repair.py` finds its sibling scripts and the dashboard template exactly where the
+# `sitemend.py` finds its sibling scripts and the dashboard template exactly where the
 # source tree has them.
 [tool.setuptools]
 packages = ["sitemend", "sitemend.assets"]

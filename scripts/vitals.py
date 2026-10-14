@@ -161,7 +161,7 @@ def main():
     pages = json.loads(args.pages_json) if args.pages_json else args.pages
     pages = [normalize_page(p) for p in pages]
 
-    workdir = tempfile.mkdtemp(prefix="seo-repair-lh-")
+    workdir = tempfile.mkdtemp(prefix="sitemend-lh-")
     runs, errors = [], []
     try:
         for path in pages:

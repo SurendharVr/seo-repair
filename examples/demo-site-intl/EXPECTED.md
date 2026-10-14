@@ -5,7 +5,7 @@ per rule added in v1.2.0. `tests/test_skill.py::TestIntlDemoSite` requires exact
 list; if you change a rule, change the fixture or this table in the same commit.
 
 ```bash
-python scripts/seo_repair.py audit examples/demo-site-intl --out /tmp/intl-out
+python scripts/sitemend.py audit examples/demo-site-intl --out /tmp/intl-out
 ```
 
 **11 findings — 0 critical, 3 high, 7 medium, 1 low.**

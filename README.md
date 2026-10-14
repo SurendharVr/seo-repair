@@ -1,7 +1,7 @@
 # sitemend
 
-[![tests](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml)
-[![license](https://img.shields.io/github/license/SurendharVr/seo-repair)](LICENSE)
+[![tests](https://github.com/SurendharVr/sitemend/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SurendharVr/sitemend/actions/workflows/tests.yml)
+[![license](https://img.shields.io/github/license/SurendharVr/sitemend)](LICENSE)
 
 **Find the SEO problems Google actually penalises, then fix them in your code.**
 
@@ -14,8 +14,7 @@ content, broken internal links, thin content, missing canonical tags, keyword
 cannibalization and invalid schema markup — then proposes the fixes, applies the ones
 you approve, and re-verifies with a second crawl.
 
-`sitemend` is the PyPI package and command-line name. Inside Claude Code the skill and
-plugin are still called `seo-repair`.
+Formerly `seo-repair`; the old GitHub URL redirects here.
 
 What makes it different from a checklist: **the order is enforced.** SEO findings are
 not independent, so this treats them as a repair system with a dependency order.
@@ -49,7 +48,7 @@ $ python audit.py --crawl crawl.json --schema schema.json --out findings.json
 
 Each run also produces a self-contained HTML dashboard:
 
-![The seo-repair dashboard: severity totals, the seven-stage repair pipeline with gates drawn between the stages, and the three gate cards showing why each is clear or blocked](docs/dashboard.png)
+![The sitemend dashboard: severity totals, the seven-stage repair pipeline with gates drawn between the stages, and the three gate cards showing why each is clear or blocked](docs/dashboard.png)
 
 Note stage 04. Lighthouse was not run here, so Performance reads **not measured** rather
 than *clear* — a stage that produced no findings because nobody looked at it is not a
@@ -84,7 +83,7 @@ The alternative to a tool like this is pasting a page into a chat and asking for
 audit. That gives you advice. This gives you a crawl, with the differences that follow
 from that:
 
-| | A checklist prompt | seo-repair |
+| | A checklist prompt | sitemend |
 | --- | --- | --- |
 | **Coverage** | The pages you paste or open, one at a time | Every page, from a folder or a live URL (200 by default), plus `robots.txt` and `sitemap.xml` |
 | **What it sees** | Text or markup you supply | Real status codes and redirects, canonicals, internal links, orphans, click depth |
@@ -99,17 +98,17 @@ from that:
 
 **How big is the gap?** We measured it on the demo site (5 pages, 14 planted defects).
 Three plain "audit this site" runs by an AI agent with read-only file access found 14, 12
-and 13 of the defects, with one false alarm between them. seo-repair found all 14 with no
+and 13 of the defects, with one false alarm between them. sitemend found all 14 with no
 false alarms, gave identical findings on two runs, and took about 3 seconds without using
 a language model. On a site this small a good prompt does well, and it noticed things
-seo-repair does not check, such as a placeholder domain in the sitemap and missing Open
+sitemend does not check, such as a placeholder domain in the sitemap and missing Open
 Graph tags. The advantage is repeatability, scale and CI, not a better score on five
-pages. The demo was built around what seo-repair detects, and this was one model and three
+pages. The demo was built around what sitemend detects, and this was one model and three
 runs, so read it as an example, not a benchmark.
 
 A prompt is the better tool for work that needs the live search results: keyword
 research, reading what the top-ranking pages cover, and writing or rewriting content.
-seo-repair does not do that, and hands it off by design. Use them in that order: fix
+sitemend does not do that, and hands it off by design. Use them in that order: fix
 what stops a page being crawled and indexed first, then decide what it should say.
 
 ---
@@ -118,7 +117,7 @@ what stops a page being crawled and indexed first, then decide what it should sa
 
 - **Full workflow:** Claude Code (audit, plan, apply, verify).
 - **Standalone:** one command, `sitemend audit <folder|URL>` (or
-  `python scripts/seo_repair.py audit ...` from a clone), runs the whole pipeline on
+  `python scripts/sitemend.py audit ...` from a clone), runs the whole pipeline on
   plain Python 3.9+. No agent needed. See below.
 - **Tested on:** Linux, macOS and Windows. The Lighthouse step is verified on Windows only.
 
@@ -127,14 +126,14 @@ what stops a page being crawled and indexed first, then decide what it should sa
 **As a plugin:**
 
 ```
-/plugin marketplace add SurendharVr/seo-repair
+/plugin marketplace add SurendharVr/sitemend
 ```
 
 **Or clone straight into your skills directory:**
 
 ```bash
-git clone https://github.com/SurendharVr/seo-repair ~/.claude/skills/seo-repair
-pip install -r ~/.claude/skills/seo-repair/requirements.txt
+git clone https://github.com/SurendharVr/sitemend ~/.claude/skills/sitemend
+pip install -r ~/.claude/skills/sitemend/requirements.txt
 ```
 
 **Or as a command-line tool, without Claude Code:**
@@ -157,17 +156,17 @@ One command audits a site folder or a live URL and writes a report and dashboard
 edits nothing in the site.
 
 ```bash
-python scripts/seo_repair.py audit ./my-site              # or https://example.com
-python scripts/seo_repair.py audit ./my-site --fail-on high   # exit 1 if a high/critical finding is open (CI gate)
-python scripts/seo_repair.py verify ./my-site --baseline seo-repair-out/findings.json
+python scripts/sitemend.py audit ./my-site              # or https://example.com
+python scripts/sitemend.py audit ./my-site --fail-on high   # exit 1 if a high/critical finding is open (CI gate)
+python scripts/sitemend.py verify ./my-site --baseline sitemend-out/findings.json
 ```
 
 To guard a site on every pull request, copy
-[`examples/github-action/seo-repair.yml`](examples/github-action/seo-repair.yml) to
+[`examples/github-action/sitemend.yml`](examples/github-action/sitemend.yml) to
 `.github/workflows/`. It fails the check when a critical finding is open and attaches
 the report and dashboard to the run.
 
-Output lands in `./seo-repair-out`: `findings.json`, `SEO-REPORT-<date>.md` and a
+Output lands in `./sitemend-out`: `findings.json`, `SEO-REPORT-<date>.md` and a
 self-contained `dashboard.html`. Applying fixes stays a Claude Code job, because each
 edit needs your approval.
 
@@ -193,10 +192,10 @@ Four verbs, driven through Claude Code:
 
 | Verb | Does | Writes |
 | --- | --- | --- |
-| `seo-repair audit <path>` | Crawl → audit → report. Establishes the baseline. | report only |
-| `seo-repair plan` | Ranks findings into stage-ordered batches, previews each diff | nothing |
-| `seo-repair apply <batch>` | Applies **one approved batch**, re-checks that stage | source files |
-| `seo-repair verify` | Re-crawl, diff vs. baseline, regression gate | report only |
+| `sitemend audit <path>` | Crawl → audit → report. Establishes the baseline. | report only |
+| `sitemend plan` | Ranks findings into stage-ordered batches, previews each diff | nothing |
+| `sitemend apply <batch>` | Applies **one approved batch**, re-checks that stage | source files |
+| `sitemend verify` | Re-crawl, diff vs. baseline, regression gate | report only |
 
 Nothing is edited without approval. `plan` refuses to run without a baseline; `apply`
 refuses without a named, approved batch.
@@ -216,14 +215,14 @@ Findings cite the offending string from your source, so every one is checkable.
 
 ## Limitations, stated plainly
 
-- **JS rendering is for live URLs.** `seo-repair audit https://... --render` parses
+- **JS rendering is for live URLs.** `sitemend audit https://... --render` parses
   Chrome's post-JavaScript DOM with a local Chrome, Chromium or Edge, for up to 50 pages
   (`--render-limit`, about 5 seconds each, one browser launch per page). A folder has no
   running site to render, so fs mode only gets the static-shell hint `S1-JS-SHELL`. The
   mobile-overflow check is still Claude Code only (it uses the built-in browser tools).
   The render path is verified against real Chrome on Windows, and in CI on Ubuntu; the
-  opt-in test is `SEO_REPAIR_RENDER_TEST=1`. Chrome runs with its sandbox on; as root, or in a container
-  where it will not start, set SEO_REPAIR_NO_SANDBOX=1.
+  opt-in test is `SITEMEND_RENDER_TEST=1`. Chrome runs with its sandbox on; as root, or in a container
+  where it will not start, set SITEMEND_NO_SANDBOX=1.
 - **Redirect chains, response headers and rendering need an http crawl**, because a
   folder on disk has none of them. Pagination (`rel=next/prev`) is not checked: Google
   stopped using it.
@@ -232,7 +231,7 @@ Findings cite the offending string from your source, so every one is checkable.
 - **`vitals.py` is verified on Windows only.** CI runs the test suite on Linux, macOS
   and Windows, but excludes Lighthouse because it needs a browser — so that one script's
   cross-platform behaviour is untested rather than proven. Reports welcome. One opt-in
-  test (`SEO_REPAIR_LIGHTHOUSE_TEST=1`) runs real Lighthouse against a local server.
+  test (`SITEMEND_LIGHTHOUSE_TEST=1`) runs real Lighthouse against a local server.
 - **Stage 6 does no off-page work.** By design.
 - **The unused-asset check recommends deletion**, so it is deliberately conservative: a
   filename appearing anywhere in any page's source counts as used. Verify before

@@ -104,6 +104,6 @@ jobs:
         run: python -c "import sys; sys.path.insert(0, 'scripts'); import seolib; print(seolib.find_chrome())"
       - name: Render crawl against real Chrome
         env:
-          SEO_REPAIR_RENDER_TEST: "1"
-          SEO_REPAIR_NO_SANDBOX: "1"
+          SITEMEND_RENDER_TEST: "1"
+          SITEMEND_NO_SANDBOX: "1"
         run: python -m unittest tests.test_skill.TestRenderCrawl -v

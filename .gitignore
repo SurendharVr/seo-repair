@@ -10,6 +10,7 @@ venv/
 # Run artifacts. These contain full crawls of whatever site was audited, including
 # its page text -- they must never be committed. Only the demo site's expected
 # output is tracked.
+sitemend-out/
 seo-repair-out/
 crawl*.json
 findings*.json
