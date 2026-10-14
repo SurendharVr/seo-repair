@@ -327,7 +327,7 @@ def render_dom(chrome, url, timeout=30):
     profile = tempfile.mkdtemp(prefix="seo-repair-chrome-")
     nt = os.name == "nt"
     cmd = chrome_cmd(chrome, url, profile)
-    proc =subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             start_new_session=not nt)
     try:
         out, _ = proc.communicate(timeout=timeout)

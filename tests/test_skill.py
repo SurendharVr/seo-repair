@@ -1432,7 +1432,7 @@ class TestChromeCommand(unittest.TestCase):
 
 
 class TestPackaging(unittest.TestCase):
-    ROOT =os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
     def _read(self, *parts):
         with open(os.path.join(self.ROOT, *parts), encoding="utf-8") as f:
