@@ -7,7 +7,8 @@ Fixes from reviewing 1.2.0.
 - **Chrome keeps its sandbox on.** `--render` added `--no-sandbox` on every non-Windows
   OS. It is now added only when running as root, or with `SEO_REPAIR_NO_SANDBOX=1`.
 - **A slash-less hreflang href is not a missing page.** `href="/en"` for the page `/en/`
-  was reported "does not exist". Case and file paths stay strict.
+  was reported "does not exist" in an http crawl (a folder crawl already aliased it).
+  Case and file paths stay strict.
 - **Reciprocal hreflang alternates are not duplicates.** en-GB and en-US pages with the
   same text were reported as a critical `S3-DUPLICATE-EXACT` and blocked Gate B. Pages
   that do not name each other are still reported.
