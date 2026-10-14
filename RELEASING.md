@@ -94,13 +94,11 @@ A pushed tag does **not** create a GitHub Release; that is a separate step.
 
 **PyPI.** Pushing a `v*` tag runs `.github/workflows/release.yml`, which refuses a tag
 that does not match `pyproject.toml` and then publishes through PyPI trusted publishing:
-no API token is stored in the repo. One-time setup before the first tag, on pypi.org:
-*Your projects -> Publishing -> Add a new pending publisher* with PyPI project name
-`sitemend`, owner `SurendharVr`, repository `sitemend`, workflow `release.yml`,
-environment `pypi` (and create a `pypi` environment under the repo's Settings ->
-Environments). Until that exists the workflow
-fails at the upload step; nothing else is affected. After the first successful upload,
-add `pip install sitemend` to the README.
+no API token is stored in the repo. The trusted publisher is set up on pypi.org for
+project `sitemend`, owner `SurendharVr`, repository `sitemend`, workflow `release.yml`,
+environment `pypi` (a `pypi` environment exists under the repo's Settings ->
+Environments). If the repo is ever renamed again, update the publisher first or the
+upload step fails. First published as 1.2.1 on 2026-10-14.
 
 To check the wheel by hand without publishing anything:
 

@@ -140,12 +140,11 @@ pip install -r ~/.claude/skills/seo-repair/requirements.txt
 **Or as a command-line tool, without Claude Code:**
 
 ```bash
-pip install git+https://github.com/SurendharVr/seo-repair
+pip install sitemend
 sitemend audit ./my-site
 ```
 
-(The wheel is built and tested in CI on every push. `pip install sitemend` from PyPI
-works once a release has been published; see [`RELEASING.md`](RELEASING.md).)
+(For unreleased changes on `main`: `pip install git+https://github.com/SurendharVr/sitemend`.)
 
 Requires Python 3.9+ with `beautifulsoup4`, `lxml` and `requests` (`pip` installs them;
 from a clone, `requirements.txt` lists them). Core Web Vitals and `--render` additionally
