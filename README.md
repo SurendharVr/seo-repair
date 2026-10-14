@@ -94,6 +94,16 @@ from that:
 | **In CI** | No | `--fail-on` sets the exit code. An example GitHub Action is in `examples/` |
 | **Tested** | Not testable | 85 tests, many pinned to false positives found on real runs |
 
+**How big is the gap?** We measured it on the demo site (5 pages, 14 planted defects).
+Three plain "audit this site" runs by an AI agent with read-only file access found 14, 12
+and 13 of the defects, with one false alarm between them. seo-repair found all 14 with no
+false alarms, gave identical findings on two runs, and took about 3 seconds without using
+a language model. On a site this small a good prompt does well, and it noticed things
+seo-repair does not check, such as a placeholder domain in the sitemap and missing Open
+Graph tags. The advantage is repeatability, scale and CI, not a better score on five
+pages. The demo was built around what seo-repair detects, and this was one model and three
+runs, so read it as an example, not a benchmark.
+
 A prompt is the better tool for work that needs the live search results: keyword
 research, reading what the top-ranking pages cover, and writing or rewriting content.
 seo-repair does not do that, and hands it off by design. Use them in that order: fix
