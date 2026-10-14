@@ -400,6 +400,18 @@ class TestCli(Base):
         self.assertEqual(sorted(os.listdir(self.fx.root)), before, "audit must not touch the site")
         self.assertGreaterEqual(seo_repair.worst_open(findings), -1)
 
+    def test_rerun_does_not_audit_its_own_report(self):
+        """REGRESSION: with --out inside the audited folder (the default when run as
+        `audit .`), the second run crawled the first run's dashboard.html and reported
+        7 extra findings on the demo site."""
+        self.fx.write("index.html", page_html())
+        out = os.path.join(self.fx.root, "seo-repair-out")
+        counts = []
+        for _ in range(2):
+            findings = seo_repair.audit(self.fx.root, out, 200, None)
+            counts.append(len(json.load(open(findings, encoding="utf-8"))["findings"]))
+        self.assertEqual(counts[0], counts[1])
+
     def test_worst_open_ranks_severity(self):
         path = os.path.join(self.fx.root, "f.json")
         with open(path, "w") as f:

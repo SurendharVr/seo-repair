@@ -17,6 +17,7 @@ EXCLUDE_DIRS = {
     "dist", "build", "_site", "out", "node_modules", ".git", ".next", ".nuxt",
     ".svelte-kit", ".cache", "coverage", "vendor", "__pycache__", ".venv",
     "venv", ".idea", ".vscode", "tmp", "temp",
+    "seo-repair-out",   # this tool's own default output, so a re-run never audits its last report
 }
 
 HTML_EXT = (".html", ".htm")
