@@ -135,6 +135,36 @@ def extract_page(url, html, soup=None):
     html_tag = soup.find("html")
     viewport = meta(name="viewport")
 
+    hreflang = []
+    for t in soup.find_all("link", hreflang=True):
+        if "alternate" in [x.lower() for x in (t.get("rel") or [])]:
+            hreflang.append({"lang": (t.get("hreflang") or "").strip(),
+                             "href": (t.get("href") or "").strip()})
+
+    # http:// subresources. "active" ones (script, stylesheet, iframe...) are blocked
+    # outright by browsers on an https page; passive ones (images, media) are upgraded or
+    # warned about. Whether the page IS https is the auditor's call -- it knows the origin.
+    insecure = []
+    for tag, attr, active in (("script", "src", True), ("iframe", "src", True),
+                              ("embed", "src", True), ("object", "data", True),
+                              ("img", "src", False), ("source", "src", False),
+                              ("video", "src", False), ("audio", "src", False)):
+        for el in soup.find_all(tag):
+            v = (el.get(attr) or "").strip()
+            if v.lower().startswith("http://"):
+                insecure.append({"url": v, "tag": tag, "active": active})
+    for el in soup.find_all("link"):
+        v = (el.get("href") or "").strip()
+        if v.lower().startswith("http://") and "stylesheet" in [x.lower() for x in (el.get("rel") or [])]:
+            insecure.append({"url": v, "tag": "link", "active": True})
+
+    # A client-rendered shell: an empty mount point and next to no text in the source.
+    # Only a guess from static HTML -- a rendered crawl (--render) is what proves it.
+    mount_empty = any(
+        (el := soup.find(id=i)) is not None and not el.get_text(strip=True)
+        for i in ("root", "app", "__next", "__nuxt", "___gatsby", "svelte"))
+    js_shell = mount_empty and len(full_text.split()) < 30
+
     og = {}
     for t in soup.find_all("meta", attrs={"property": re.compile("^og:", re.I)}):
         og[t.get("property").lower()] = (t.get("content") or "").strip()
@@ -166,6 +196,9 @@ def extract_page(url, html, soup=None):
         "jsonld_types": sorted({t for b in jsonld for t in _types_of(b)}),
         "lang": (html_tag.get("lang") if html_tag else None),
         "viewport": viewport,
+        "hreflang": hreflang,
+        "insecure_refs": insecure[:20],
+        "js_shell": js_shell,
         "og": og,
         "twitter": tw,
         "html_bytes": len(html.encode("utf-8", "replace")),
@@ -372,8 +405,24 @@ def fetch_site_files(sess, origin, timeout):
     return robots_txt, sitemap_xml
 
 
-def crawl_http(start, max_pages=300, timeout=20):
+SECURITY_HEADERS = ("strict-transport-security", "x-content-type-options")
+
+
+def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
+    """render=True re-reads each page (up to render_limit) from Chrome's post-JavaScript DOM.
+    Status, redirects and headers still come from the plain request; only the HTML that
+    is parsed changes, and the raw HTML's head is kept so the auditor can compare the two.
+    ponytail: one Chrome launch per page (~5 s); a persistent DevTools session if big
+    sites need rendering past the limit.
+    """
     import requests
+
+    chrome = None
+    if render:
+        chrome = S.find_chrome()
+        if not chrome:
+            sys.exit("--render needs Chrome, Chromium or Edge (set CHROME_PATH to point at one)")
+    rendered = 0
 
     sess = requests.Session()
     sess.headers["User-Agent"] = "seo-repair-crawler/1.0 (+local audit)"
@@ -441,7 +490,22 @@ def crawl_http(start, max_pages=300, timeout=20):
                 seen.add(target)
                 path = target
 
-        rec = extract_page(path, r.text)
+        html, raw, render_error = r.text, None, None
+        if chrome and r.status_code == 200 and rendered < render_limit:
+            dom, render_error = S.render_dom(chrome, r.url)
+            if dom:
+                raw = extract_page(path, r.text)
+                html = dom
+                rendered += 1
+
+        rec = extract_page(path, html)
+        if raw:
+            rec["rendered"] = True
+            rec["raw"] = {"words": raw["full_word_count"], "title": raw["title"],
+                          "canonical": raw["canonical"], "robots_meta": raw["robots_meta"],
+                          "h1": len(raw["h1"])}
+        elif render_error:
+            rec["render_error"] = render_error
         rec["file"] = None
         rec["aliases"] = sorted({path, path + "index.html"} if path.endswith("/") else {path})
         rec["status"] = r.status_code
@@ -449,7 +513,10 @@ def crawl_http(start, max_pages=300, timeout=20):
         rec["final_url"] = r.url
         rec["redirected"] = len(r.history) > 0
         rec["redirect_chain"] = [h.status_code for h in r.history]
+        rec["redirect_hops"] = [h.url for h in r.history] + [r.url]
         rec["x_robots_tag"] = r.headers.get("X-Robots-Tag")
+        rec["security_headers"] = {k: r.headers.get(k) for k in SECURITY_HEADERS
+                                   if r.headers.get(k)}
         pages.append(rec)
 
         if r.status_code == 200:
@@ -480,8 +547,14 @@ def main():
     ap.add_argument("--base-url", help="production origin, e.g. https://example.com")
     ap.add_argument("--out", default="crawl.json")
     ap.add_argument("--max-pages", type=int, default=300)
+    ap.add_argument("--render", action="store_true",
+                    help="http mode: parse Chrome's post-JavaScript DOM (needs a local Chrome/Edge)")
+    ap.add_argument("--render-limit", type=int, default=50,
+                    help="max pages to render (~5 s each); the rest use the raw HTML")
     args = ap.parse_args()
 
+    if args.render and args.mode != "http":
+        ap.error("--render needs --mode http: fs mode has no running site to render")
     if args.mode == "fs":
         if not args.root:
             ap.error("--root is required in fs mode")
@@ -492,7 +565,8 @@ def main():
         if not args.start:
             ap.error("--start is required in http mode")
         (pages, assets, robots_txt, sitemap_xml, extras, excluded,
-         skipped, refs, names) = crawl_http(args.start, args.max_pages)
+         skipped, refs, names) = crawl_http(args.start, args.max_pages, render=args.render,
+                                  render_limit=args.render_limit)
         source = args.start
 
     robots = S.Robots(robots_txt)
@@ -523,6 +597,7 @@ def main():
             "base_url": base_url,
             "crawled_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "page_count": len(pages),
+            "rendered_pages": sum(1 for p in pages if p.get("rendered")),
             "excluded_dirs_present": excluded,
             "skipped": skipped,
         },
@@ -532,7 +607,8 @@ def main():
             "groups": [{"agents": g["agents"], "rules": [[a, p] for a, p in g["rules"]]} for g in robots.groups],
             "raw": robots.raw[:2000],
         },
-        "sitemap": {"found": bool(sitemap_xml), "urls": sm_urls, "notes": sm_errs},
+        "sitemap": {"found": bool(sitemap_xml), "urls": sm_urls, "notes": sm_errs,
+                    "lastmods": S.parse_sitemap_lastmods(sitemap_xml)},
         "extras": {k: True for k in extras},
         "extras_content": extras,
         "assets": assets,
@@ -545,6 +621,9 @@ def main():
     print("robots.txt: {0} | sitemap.xml: {1} ({2} urls)".format(
         "found" if robots.found else "MISSING",
         "found" if sitemap_xml else "MISSING", len(sm_urls)))
+    if args.render:
+        print("rendered {0} of {1} pages in Chrome".format(
+            sum(1 for p in pages if p.get("rendered")), len(pages)))
     if excluded:
         print("excluded build dirs: " + ", ".join("{0} ({1} files)".format(e["dir"], e["files"]) for e in excluded))
     if skipped:

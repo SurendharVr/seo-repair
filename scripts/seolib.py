@@ -6,7 +6,12 @@ Python's builtin hash() is salted per-process and must never be used here.
 """
 import hashlib
 import json
+import os
 import re
+import shutil
+import signal
+import subprocess
+import tempfile
 from urllib.parse import urlsplit, urljoin
 
 # Directories that must never be crawled. dist/build/_site are build output and are
@@ -257,6 +262,79 @@ def parse_sitemap(xml_text):
     if not locs:
         errs.append("no <loc> entries found")
     return [l.strip() for l in locs], errs
+
+
+def parse_sitemap_lastmods(xml_text):
+    """[(loc, lastmod_or_None)] for every <url> block. Kept apart from parse_sitemap so
+    the many callers of that function keep their shape."""
+    out = []
+    for block in re.findall(r"<url>(.*?)</url>", xml_text or "", re.I | re.S):
+        loc = re.search(r"<loc>\s*(.*?)\s*</loc>", block, re.I | re.S)
+        lm = re.search(r"<lastmod>\s*(.*?)\s*</lastmod>", block, re.I | re.S)
+        if loc:
+            out.append((loc.group(1).strip(), lm.group(1).strip() if lm else None))
+    return out
+
+
+# ------------------------------------------------------------ rendered DOM (Chrome)
+
+CHROME_NAMES = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
+                "chrome", "msedge", "microsoft-edge")
+CHROME_PATHS = (
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+)
+
+
+def find_chrome():
+    """A Chrome/Chromium/Edge binary, or None. CHROME_PATH wins (Lighthouse honours it too)."""
+    env = os.environ.get("CHROME_PATH")
+    if env and os.path.isfile(env):
+        return env
+    for name in CHROME_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+    return next((p for p in CHROME_PATHS if os.path.isfile(p)), None)
+
+
+def render_dom(chrome, url, timeout=30):
+    """The DOM after JavaScript has run, via `chrome --headless --dump-dom`.
+
+    No Playwright or Selenium: the Lighthouse step already needs a local Chrome, and
+    --dump-dom is the platform's own answer to "what does the page look like after JS".
+    Returns (html_or_None, error_or_None). The profile is throwaway; on Windows Chrome
+    often holds it open past exit, so cleanup failures are ignored.
+    """
+    profile = tempfile.mkdtemp(prefix="seo-repair-chrome-")
+    nt = os.name == "nt"
+    cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
+           "--user-data-dir=" + profile, "--virtual-time-budget=8000", "--dump-dom", url]
+    if not nt:
+        cmd.insert(1, "--no-sandbox")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            start_new_session=not nt)
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if nt:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+        try:
+            proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        return None, "render timed out after {0}s".format(timeout)
+    finally:
+        shutil.rmtree(profile, ignore_errors=True)
+    html = out.decode("utf-8", "replace")
+    if "<html" not in html.lower():
+        return None, "chrome returned no document"
+    return html, None
 
 
 def jdump(obj, path):

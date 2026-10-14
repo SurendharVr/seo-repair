@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "seo-repair"
+# Keep in step with .claude-plugin/plugin.json and SKILL.md; tests/test_skill.py checks it.
+version = "1.2.0"
+description = "Technical SEO audit and repair: crawls a site folder or live URL, finds indexing, duplicate-content, link, hreflang and schema problems, and never invents a number it did not measure."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "surendhar-v" }]
+keywords = ["seo", "seo-audit", "technical-seo", "crawler", "sitemap", "structured-data",
+            "core-web-vitals", "lighthouse", "claude-code", "claude-skill"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Internet :: WWW/HTTP :: Site Management",
+    "Environment :: Console",
+]
+dependencies = ["beautifulsoup4>=4.9", "lxml>=4.6", "requests>=2.25"]
+
+[project.urls]
+Homepage = "https://github.com/SurendharVr/seo-repair"
+Issues = "https://github.com/SurendharVr/seo-repair/issues"
+Changelog = "https://github.com/SurendharVr/seo-repair/blob/main/CHANGELOG.md"
+
+[project.scripts]
+seo-repair = "seorepair.seo_repair:main"
+
+# The skill keeps its flat scripts/ layout (SKILL.md runs them by path). For the wheel,
+# that directory is the `seorepair` package and assets/ rides along inside it, so
+# `seo_repair.py` finds its sibling scripts and the dashboard template exactly where the
+# source tree has them.
+[tool.setuptools]
+packages = ["seorepair", "seorepair.assets"]
+
+[tool.setuptools.package-dir]
+seorepair = "scripts"
+"seorepair.assets" = "assets"
+
+[tool.setuptools.package-data]
+"seorepair.assets" = ["dashboard.html"]

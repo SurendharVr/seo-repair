@@ -32,7 +32,7 @@ def run(script, *args, ok=(0,)):
     return r
 
 
-def audit(target, out, max_pages, site_name):
+def audit(target, out, max_pages, site_name, render=False, render_limit=50):
     os.makedirs(out, exist_ok=True)
     gi = os.path.join(out, ".gitignore")
     if not os.path.exists(gi):
@@ -44,6 +44,10 @@ def audit(target, out, max_pages, site_name):
         crawl_args = ["--mode", "http", "--start", target,
                       "--base-url", "{0}://{1}".format(u.scheme, u.netloc),
                       "--max-pages", max_pages]
+        if render:
+            crawl_args += ["--render", "--render-limit", render_limit]
+    elif render:
+        sys.exit("--render needs a live URL: a folder has no running site to render")
     elif os.path.isdir(target):
         crawl_args = ["--root", target]
     else:
@@ -80,11 +84,16 @@ def main():
         sp.add_argument("--max-pages", type=int, default=200)
         sp.add_argument("--site-name")
         sp.add_argument("--fail-on", choices=SEVERITY[1:])
+        sp.add_argument("--render", action="store_true",
+                        help="URL targets: audit Chrome's post-JavaScript DOM (needs local Chrome/Edge)")
+        sp.add_argument("--render-limit", type=int, default=50,
+                        help="max pages to render, ~5 s each (default 50)")
     sub.choices["verify"].add_argument("--baseline", required=True,
                                        help="findings.json from an earlier audit")
     args = ap.parse_args()
 
-    findings = audit(args.target, args.out, args.max_pages, args.site_name)
+    findings = audit(args.target, args.out, args.max_pages, args.site_name,
+                     args.render, args.render_limit)
     regressed = False
     if args.cmd == "verify":
         r = run("verify.py", "--baseline", args.baseline, "--current", findings,

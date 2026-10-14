@@ -8,6 +8,7 @@ Usage:
   python audit.py --crawl crawl.json [--out findings.json] [--vitals vitals.json]
 """
 import argparse
+import datetime
 import json
 import re
 from collections import defaultdict
@@ -90,6 +91,37 @@ def placeholder_host_of(url):
 
 
 OG_REQUIRED = ("og:title", "og:description", "og:image")
+
+# BCP 47 as hreflang uses it: language, optional script, optional region, or x-default.
+HREFLANG_RE = re.compile(r"^(x-default|[a-z]{2,3}(-[a-z]{4})?(-([a-z]{2}|\d{3}))?)$", re.I)
+# W3C Datetime, the only format the sitemap protocol allows in <lastmod>.
+LASTMOD_RE = re.compile(
+    r"^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?)?)?$")
+LASTMOD_UNIFORM_MIN = 5   # fewer dated URLs than this can honestly share one date
+JS_WORDS_MIN_GAP = 50     # words that exist only after JS, before it is worth a finding
+
+
+def valid_lastmod(v):
+    if not LASTMOD_RE.match(v):
+        return False
+    try:
+        parts = [int(x) for x in v[:10].split("-")]
+        datetime.date(*(parts + [1] * (3 - len(parts))))
+    except ValueError:
+        return False
+    return True
+
+
+def hreflang_target(href, page_url, alias, base):
+    """(kind, page_url) for an hreflang href: 'internal' with the crawled page it names
+    (None when no such page exists), or 'external' for another origin we cannot check."""
+    if href.startswith("http") and base and not same_origin(href, base):
+        return "external", None
+    kind, resolved = S.resolve_href(page_url, href)
+    if kind not in ("internal", "absolute"):
+        return "internal", None
+    path = path_of(href) if kind == "absolute" else resolved
+    return "internal", alias.get(S.norm_path(path))
 
 
 def same_origin(url, base):
@@ -244,6 +276,126 @@ def audit(doc, vitals=None, schema_findings=None):
                            evidence='href="{0}" -> {1}'.format(refs[0]["href"], target),
                            recipe="broken-link-fix", detail={"target": target, "refs": refs[:10]}))
 
+    # redirects -- only an http crawl ever sees one
+    for p in pages:
+        hops = p.get("redirect_hops") or []
+        if len(hops) >= 3:                      # N redirects = N+1 URLs
+            out.append(finding("S1-REDIRECT-CHAIN", 1, "medium",
+                               "{0} redirects in a row before this page is reached.".format(len(hops) - 1),
+                               [p["url"]], evidence=" -> ".join(hops), recipe="redirect-fix"))
+    for sk in doc["meta"].get("skipped") or []:
+        reason = sk.get("reason") or ""
+        if "redirect" in reason.lower() and "exceeded" in reason.lower():
+            out.append(finding("S1-REDIRECT-LOOP", 1, "high",
+                               "URL redirects in a loop and never resolves.", [sk["url"]],
+                               evidence=reason, recipe="redirect-fix"))
+
+    # mixed content: http:// subresources on a page that is served over https
+    for p in pages:
+        refs = p.get("insecure_refs") or []
+        if refs and ((p.get("canonical") or "").startswith("https://") or base.startswith("https://")):
+            active = [r for r in refs if r["active"]]
+            out.append(finding("S1-MIXED-CONTENT", 1, "high" if active else "medium",
+                               "{0} http:// resource(s) on an https page{1}.".format(
+                                   len(refs), " -- browsers block the scripts/styles outright" if active else ""),
+                               [p["url"]],
+                               evidence="; ".join("<{0}> {1}".format(r["tag"], r["url"]) for r in refs[:3]),
+                               recipe="mixed-content-fix"))
+
+    # security headers: response headers exist only in an http crawl, and HSTS only means
+    # something on https, so a plain-http dev server is never nagged about them.
+    if doc["meta"].get("mode") == "http" and base.startswith("https://"):
+        seen = [p for p in pages if p.get("status") == 200 and "security_headers" in p]
+        gaps = []
+        for hdr, label in (("strict-transport-security", "Strict-Transport-Security"),
+                           ("x-content-type-options", "X-Content-Type-Options")):
+            n = sum(1 for p in seen if hdr not in p["security_headers"])
+            if n:
+                gaps.append("{0} missing on {1} of {2} pages".format(label, n, len(seen)))
+        if gaps:
+            out.append(finding("S1-SECURITY-HEADERS", 1, "low",
+                               "Response security headers are missing.", ["/"],
+                               evidence="; ".join(gaps), recipe="security-headers-add"))
+
+    # sitemap <lastmod>
+    lastmods = [(u, v) for u, v in (doc["sitemap"].get("lastmods") or []) if v]
+    bad = [(u, v) for u, v in lastmods if not valid_lastmod(v)]
+    if bad:
+        out.append(finding("S1-SITEMAP-LASTMOD-INVALID", 1, "medium",
+                           "{0} sitemap <lastmod> value(s) are not valid W3C dates.".format(len(bad)),
+                           ["/"], evidence="; ".join("{0} -> {1}".format(u, v) for u, v in bad[:3]),
+                           recipe="lastmod-fix"))
+    elif len(lastmods) >= LASTMOD_UNIFORM_MIN and len({v for _, v in lastmods}) == 1:
+        out.append(finding("S1-SITEMAP-LASTMOD-UNIFORM", 1, "low",
+                           "Every sitemap <lastmod> is the same date, so crawlers learn to ignore them.",
+                           ["/"], evidence="{0} URLs, all {1}".format(len(lastmods), lastmods[0][1]),
+                           recipe="lastmod-fix", confidence="medium"))
+
+    # hreflang: every alternate must name a real page, include itself, and be reciprocated
+    h_targets = {}
+    for p in pages:
+        entries = p.get("hreflang") or []
+        if not entries:
+            continue
+        resolved = {}
+        for e in entries:
+            if not HREFLANG_RE.match(e["lang"]):
+                out.append(finding("S1-HREFLANG-INVALID", 1, "medium",
+                                   "hreflang value is not a valid language code.", [p["url"]],
+                                   evidence='hreflang="{0}"'.format(e["lang"]), recipe="hreflang-fix"))
+                continue
+            kind, target = hreflang_target(e["href"], p["url"], alias, base)
+            if kind == "internal" and target is None:
+                out.append(finding("S1-HREFLANG-BROKEN", 1, "high",
+                                   "hreflang points at a page that does not exist.", [p["url"]],
+                                   evidence='hreflang="{0}" href="{1}"'.format(e["lang"], e["href"]),
+                                   recipe="hreflang-fix"))
+            elif target:
+                resolved[e["lang"].lower()] = target
+        h_targets[p["url"]] = set(resolved.values())
+        if p["url"] not in h_targets[p["url"]] and resolved:
+            out.append(finding("S1-HREFLANG-NO-SELF", 1, "medium",
+                               "hreflang set does not include the page itself.", [p["url"]],
+                               evidence="lists " + ", ".join(sorted(h_targets[p["url"]])),
+                               recipe="hreflang-fix"))
+    for u, targets in sorted(h_targets.items()):
+        silent = sorted(t for t in targets if t != u and u not in h_targets.get(t, ()))
+        if silent:
+            out.append(finding("S1-HREFLANG-NO-RETURN", 1, "high",
+                               "hreflang alternates do not link back, so Google ignores the pair.",
+                               [u], evidence="no return tag from " + ", ".join(silent),
+                               recipe="hreflang-fix"))
+
+    # JavaScript: what a crawler that does not run scripts sees vs. what a browser sees
+    for p in pages:
+        raw = p.get("raw")
+        if p.get("rendered") and raw:
+            gap = p["full_word_count"] - raw["words"]
+            if gap >= JS_WORDS_MIN_GAP and raw["words"] < 0.5 * p["full_word_count"]:
+                out.append(finding("S1-JS-DEPENDENT", 1, "medium",
+                                   "Most of this page's text only exists after JavaScript runs.",
+                                   [p["url"]],
+                                   evidence="raw HTML {0} words; rendered DOM {1} words".format(
+                                       raw["words"], p["full_word_count"]),
+                                   recipe="js-render-fix", confidence="medium"))
+            diffs = []
+            if (raw["canonical"] or "") != (p.get("canonical") or ""):
+                diffs.append("canonical {0!r} -> {1!r}".format(raw["canonical"], p.get("canonical")))
+            raw_noindex = "noindex" in (raw["robots_meta"] or "").lower()
+            if raw_noindex != bool(p.get("noindex")):
+                diffs.append("meta robots {0!r} -> {1!r}".format(raw["robots_meta"], p.get("robots_meta")))
+            if diffs:
+                out.append(finding("S1-JS-HEAD-MISMATCH", 1, "high",
+                                   "Canonical or robots directive changes when JavaScript runs.",
+                                   [p["url"]], evidence="; ".join(diffs), recipe="js-render-fix"))
+        elif p.get("js_shell") and indexable[p["url"]][0]:
+            out.append(finding("S1-JS-SHELL", 1, "medium",
+                               "Source HTML is an empty client-rendered shell; re-run with --render "
+                               "to see what a rendering crawler sees.", [p["url"]],
+                               evidence="empty app mount point, {0} words in the source".format(
+                                   p["full_word_count"]),
+                               recipe="js-render-fix", confidence="medium"))
+
     # URL hygiene
     conventions = set()
     for p in pages:
@@ -326,6 +478,8 @@ def audit(doc, vitals=None, schema_findings=None):
     for p in live:
         h1s = p["h1"]
         if len(h1s) == 0:
+            if p.get("js_shell"):
+                continue       # an unrendered shell has no headings to judge; S1-JS-SHELL says so
             out.append(finding("S2-H1-MISSING", 2, "high", "Page has no H1.", [p["url"]],
                                evidence=p["file"] or p["url"], recipe="heading-fix"))
         elif len(h1s) > 1:

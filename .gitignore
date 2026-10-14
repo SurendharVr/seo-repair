@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 .venv/
+build/
+dist/
+*.egg-info/
 venv/
 
 # Run artifacts. These contain full crawls of whatever site was audited, including
