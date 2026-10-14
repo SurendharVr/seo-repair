@@ -75,6 +75,30 @@ or review markup naming people the page does not mention. That last one is a Goo
 rich-results policy violation and a manual-action risk, and a property-checker will
 never catch it.
 
+## Versus asking for an SEO audit
+
+The alternative to a tool like this is pasting a page into a chat and asking for an SEO
+audit. That gives you advice. This gives you a crawl, with the differences that follow
+from that:
+
+| | A checklist prompt | seo-repair |
+| --- | --- | --- |
+| **Coverage** | The pages you paste or open, one at a time | Every page, from a folder or a live URL (200 by default), plus `robots.txt` and `sitemap.xml` |
+| **What it sees** | Text or markup you supply | Real status codes and redirects, canonicals, internal links, orphans, click depth |
+| **Repeatable** | Wording and findings can differ run to run | Same site, same crawl, same findings. `verify` diffs a new run against a baseline |
+| **Evidence** | Advice in prose | Each finding names the page and cites the offending string |
+| **Order of work** | One flat list | Dependency order, with three gates enforced in code: no content work on pages Google cannot index, no schema on orphaned pages, no link building while critical findings are open |
+| **Numbers it cannot measure** | Nothing in a prompt stops a plausible figure | Never stated. Volume, difficulty, backlinks and field Core Web Vitals become a handoff list naming the report to open |
+| **Structured data** | Required properties, if it checks at all | Required properties, and whether the markup claims things the page never shows, such as review authors |
+| **Applying fixes** | Suggestions | One approved batch at a time, then a re-crawl to confirm it worked. Nothing is edited without approval |
+| **In CI** | No | `--fail-on` sets the exit code. An example GitHub Action is in `examples/` |
+| **Tested** | Not testable | 85 tests, many pinned to false positives found on real runs |
+
+A prompt is the better tool for work that needs the live search results: keyword
+research, reading what the top-ranking pages cover, and writing or rewriting content.
+seo-repair does not do that, and hands it off by design. Use them in that order: fix
+what stops a page being crawled and indexed first, then decide what it should say.
+
 ---
 
 ## Works with
