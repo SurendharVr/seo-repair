@@ -14,10 +14,10 @@ Reference for interpreting findings. Fixes live in `fix-recipes.md`.
 | `S1-SITEMAP-ORPHAN` | Sitemap lists a URL that doesn't exist | high — submitting 404s wastes crawl budget and signals neglect |
 | `S1-SITEMAP-GAP` | Indexable page absent from sitemap | medium |
 | `S1-INDEX-CONTRADICTION` | Page is in the sitemap **and** blocked | **critical** — the site contradicts itself |
-| `S1-NOT-INDEXABLE` | Blocked, and not obviously on purpose | medium |
+| `S1-NOT-INDEXABLE` | Blocked, and not obviously on purpose | medium; **critical** for the homepage, which is never a deliberate exclusion |
 | `S1-CANONICAL-MISSING` | No canonical on an indexable page | medium |
 | `S1-CANONICAL-CROSS` | Canonical points at a different page | high — may be deliberate; ask |
-| `S1-CANONICAL-BROKEN` / `-OFFSITE` | Canonical points to a non-existent URL or another origin | critical |
+| `S1-CANONICAL-BROKEN` / `-OFFSITE` | Canonical points to a non-existent URL or another origin (scheme and host compared, not a string prefix) | critical |
 | `S1-BROKEN-LINK` | Internal link to a URL that doesn't exist | high |
 | `S1-URL-UNCLEAN` | Uppercase, underscores, or spaces in a URL | medium |
 | `S1-URL-MIXED-CONVENTION` | Site mixes `/page` and `/page.html` | medium, low confidence |

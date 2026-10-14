@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+Fixes from a code review of 1.0.3. Each has a regression test that failed before the fix.
+
+- **A site that blocks itself no longer reads as clear.** With `Disallow: /` in robots.txt
+  and an empty sitemap, the homepage was filed as a deliberate exclusion and Gate A said
+  every crawled page was indexable. A robots-blocked homepage is now `S1-NOT-INDEXABLE` at
+  critical and Gate A reads BLOCKED.
+- **The heading-skip evidence quotes the right heading.** `S2-HEADING-SKIP` showed the
+  first H4 after the first H2, which was fine, instead of the heading that skipped.
+- **A lookalike domain no longer passes as the site's own canonical.** A canonical on
+  `example.community` was accepted for `example.com` because the check was a string
+  prefix. It now compares scheme and host.
+- **Review authors are matched as whole words, in any script.** "Ann" was found inside
+  "channel", short names were skipped, and non-Latin names were never checked. Names under
+  two characters are ignored. Crawls gain a `visible_text` field; an older `crawl.json`
+  without it skips the check.
+- **A clean schema run shows Stage 5 as assessed.** It was reported as not measured when
+  the check ran and found nothing (`findings.json` meta now has `schema_checked`). The
+  report's re-run block now prints `seo_repair.py` commands instead of ones that passed a
+  URL to `crawl.py --root`.
+- **A failed regression gate is reported as a gate result.** `verify` printed
+  "verify.py failed:" and exited as if the script had crashed when the gate failed. The output
+  folder now writes its own `.gitignore`, so `audit .` cannot leave a crawl to commit.
+- **An http redirect is no longer a second page.** `/about` redirecting to `/about/` was
+  stored twice, which raised `S3-DUPLICATE-EXACT` at critical. The target is stored once
+  and the requested path is recorded as an alias.
+- 20 new tests (79 total).
+- Not changed: `vitals.py` still runs Lighthouse through `shell=True` on Windows, so a page
+  path containing `&` is mis-parsed (needs Windows + Chrome to verify).
+
 ## 1.0.3 - 2026-10-14
 
 Fixes a bug in 1.0.2's CLI and adds a CI example.
