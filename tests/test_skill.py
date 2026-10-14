@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 import audit          # noqa: E402
 import crawl          # noqa: E402
+import report         # noqa: E402
 import schema_check   # noqa: E402
 import seo_repair     # noqa: E402
 import seolib as S    # noqa: E402
@@ -171,6 +172,22 @@ class TestExclusions(Base):
         self.assertTrue(crit, "sitemap-listed blocked page must be critical")
         self.assertEqual(crit[0]["severity"], "critical")
 
+    def test_robots_blocking_the_homepage_is_not_deliberate(self):
+        """REGRESSION found by the v1.0.3 review: `Disallow: /` with a sitemap that
+        lists nothing filed every page as a deliberate exclusion, so Gate A read
+        CLEAR 'every crawled page is indexable'."""
+        self.fx.write("index.html", page_html())
+        self.fx.write("about.html", page_html(title="About Us Page Title That Is Long Enough"))
+        self.fx.write("robots.txt", "User-agent: *\nDisallow: /\n")
+        self.fx.write("sitemap.xml", "<urlset></urlset>")
+        res = self.fx.audit()
+        gate_a = [g for g in res["gates"] if g["gate"] == "A"][0]
+        self.assertEqual(gate_a["status"], "BLOCKED")
+        self.assertIn("/", gate_a["pages"])
+        crit = [f for f in res["findings"]
+                if f["id"] == "S1-NOT-INDEXABLE" and f["severity"] == "critical"]
+        self.assertTrue(crit, "a robots-blocked homepage is never a deliberate exclusion")
+
 
 # --------------------------------------------------------------- Gate A
 
@@ -225,6 +242,31 @@ class TestGrouping(Base):
         ids = self.fx.ids()
         self.assertIn("S3-DUPLICATE-EXACT", ids)
         self.assertNotIn("S3-CANNIBALIZATION", ids)
+
+    def test_heading_skip_evidence_names_the_skipping_heading(self):
+        """REGRESSION found by the v1.0.3 review: the evidence quoted the first H4
+        after the first H2, which was a legitimate heading, not the one that skipped."""
+        body = ("<h1>Top</h1><h2>Two A</h2><h3>Three</h3><h4>Four fine</h4>"
+                "<h2>Two B</h2><h4>Skipped to four</h4><p>" + "word " * 300 + "</p>")
+        self.fx.write("index.html", page_html(body=body))
+        hits = [f for f in self.fx.audit()["findings"] if f["id"] == "S2-HEADING-SKIP"]
+        self.assertEqual(len(hits), 1)
+        self.assertIn("Skipped to four", hits[0]["evidence"])
+
+    def _canonical_ids(self, canonical):
+        self.fx.write("index.html", page_html(
+            head_extra='<link rel="canonical" href="{0}">'.format(canonical)))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = "https://example.com"
+        return [f["id"] for f in audit.audit(doc)["findings"]]
+
+    def test_canonical_on_a_lookalike_domain_is_offsite(self):
+        """REGRESSION found by the v1.0.3 review: a string-prefix test let
+        https://example.community pass as https://example.com."""
+        self.assertIn("S1-CANONICAL-OFFSITE", self._canonical_ids("https://example.community/"))
+
+    def test_canonical_on_the_same_origin_is_not_offsite(self):
+        self.assertNotIn("S1-CANONICAL-OFFSITE", self._canonical_ids("https://example.com/"))
 
     def _cannibal_pairs(self):
         pairs = set()
@@ -383,6 +425,32 @@ class TestGates(Base):
         self.assertEqual(gate_c["status"], "BLOCKED")
 
 
+class TestReport(Base):
+    def test_audit_records_whether_schema_was_checked(self):
+        self.fx.write("index.html", page_html())
+        doc = self.fx.crawl()
+        self.assertIs(audit.audit(doc, None, [])["schema_checked"], True)
+        self.assertIs(audit.audit(doc)["schema_checked"], False)
+
+    def test_clean_schema_run_counts_as_stage_5_assessed(self):
+        """REGRESSION found by the v1.0.3 review: a schema check that ran and found
+        nothing was reported 'not-measured'."""
+        self.assertTrue(report.stage5_ran({"meta": {"schema_checked": True}}, []))
+        self.assertFalse(report.stage5_ran({"meta": {}}, []))
+        self.assertTrue(report.stage5_ran({"meta": {}}, [{"stage": 5}]))
+
+    def test_rerun_block_uses_the_cli_for_both_modes(self):
+        """REGRESSION found by the v1.0.3 review: the block omitted schema_check and
+        passed a URL to crawl.py --root."""
+        crawl_doc = {"meta": {"source": "https://x.test/", "page_count": 0, "mode": "http"},
+                     "pages": []}
+        fdoc = {"gates": [{"gate": "A", "name": "n", "rule": "r", "status": "CLEAR",
+                           "detail": "d"}]}
+        md = report.build_markdown(crawl_doc, fdoc, [], None, "x.test")
+        self.assertIn('seo_repair.py audit "https://x.test/"', md)
+        self.assertNotIn("--root", md)
+
+
 # --------------------------------------------------------------- cli
 
 class TestCli(Base):
@@ -417,6 +485,38 @@ class TestCli(Base):
         with open(path, "w") as f:
             json.dump({"findings": [{"severity": "low"}, {"severity": "high"}]}, f)
         self.assertEqual(seo_repair.SEVERITY[seo_repair.worst_open(path)], "high")
+
+    def test_output_folder_ignores_itself(self):
+        """REGRESSION found by the v1.0.3 review: `audit .` left a full-text crawl.json
+        in the audited repo with nothing stopping `git add -A`."""
+        self.fx.write("index.html", page_html())
+        out = os.path.join(tempfile.mkdtemp(prefix="seo-repair-out-"), "o")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        seo_repair.audit(self.fx.root, out, 200, None)
+        with open(os.path.join(out, ".gitignore")) as f:
+            self.assertEqual(f.read(), "*\n")
+
+    def _verify_args(self):
+        d = tempfile.mkdtemp(prefix="seo-repair-verify-")
+        self.addCleanup(shutil.rmtree, d, True)
+        base, cur = os.path.join(d, "b.json"), os.path.join(d, "c.json")
+        with open(base, "w") as f:
+            json.dump({"findings": []}, f)
+        with open(cur, "w") as f:
+            json.dump({"findings": [{"id": "X", "severity": "high", "pages": ["/"],
+                                     "evidence": "e", "message": "m"}]}, f)
+        return ["--baseline", base, "--current", cur, "--out", os.path.join(d, "v.json")]
+
+    def test_failed_regression_gate_is_a_result_not_a_crash(self):
+        """REGRESSION found by the v1.0.3 review: verify.py exits 1 on a FAILED gate and
+        run() reported that as 'verify.py failed:'."""
+        r = seo_repair.run("verify.py", *self._verify_args(), ok=(0, 1))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("REGRESSION GATE: FAIL", r.stdout)
+
+    def test_unexpected_exit_codes_still_abort(self):
+        with self.assertRaises(SystemExit):
+            seo_repair.run("verify.py", *self._verify_args())
 
 
 # --------------------------------------------------------------- schema
@@ -455,8 +555,33 @@ class TestSchemaClaims(unittest.TestCase):
         page = {"url": "/", "jsonld": [self.REVIEW], "jsonld_errors": []}
         if claim_text is not None:
             page["claim_text"] = S.claim_norm(claim_text)
+            page["visible_text"] = claim_text.casefold()
         f, _ = schema_check.check_page(page, page.get("claim_text", ""))
         return [x for x in f if x["id"] == "S5-SCHEMA-UNSUPPORTED-CLAIM"]
+
+    def _review_by(self, author, page_text):
+        biz = dict(self.REVIEW, review=[{"@type": "Review", "reviewBody": "ok",
+                                         "author": {"@type": "Person", "name": author}}])
+        page = {"url": "/", "jsonld": [biz], "jsonld_errors": [],
+                "claim_text": S.claim_norm(page_text), "visible_text": page_text.casefold()}
+        f, _ = schema_check.check_page(page, page["claim_text"])
+        return [x for x in f if x["id"] == "S5-SCHEMA-UNSUPPORTED-CLAIM"]
+
+    def test_name_inside_a_longer_word_is_not_a_match(self):
+        """REGRESSION found by the v1.0.3 review: 'ann' matched inside 'channel'."""
+        self.assertTrue(self._review_by("Ann Lee", "Our channel partners. Some Street"))
+
+    def test_short_names_are_checked(self):
+        self.assertTrue(self._review_by("Li Wu", "Nothing about them here. Some Street"))
+        self.assertFalse(self._review_by("Li Wu", "Li Wu said it was great. Some Street"))
+
+    def test_non_latin_names_are_checked(self):
+        tamil = "ராஜேஷ்"
+        self.assertTrue(self._review_by(tamil, "Nothing about them here. Some Street"))
+        self.assertFalse(self._review_by(tamil, "Review by " + tamil + ". Some Street"))
+
+    def test_initial_only_tokens_are_ignored(self):
+        self.assertFalse(self._review_by("Varsha B.", "Varsha said it was lovely. Some Street"))
 
     def test_visible_review_not_flagged(self):
         self.assertEqual(self._check("Jane Doe said: Great service. Some Street"), [])
@@ -777,6 +902,83 @@ class TestHttpSitemapSeeding(unittest.TestCase):
         404, so it must stay out of `pages` and keep firing S1-SITEMAP-ORPHAN."""
         self.assertNotIn("/gone.html", self.paths)
         self.assertIn("S1-SITEMAP-ORPHAN", self.ids_for("/gone.html"))
+
+
+class TestHttpRedirects(unittest.TestCase):
+    """REGRESSION found by the v1.0.3 review: /about 301s to /about/, the crawl stored
+    the same content under both paths, S3-DUPLICATE-EXACT fired (critical) and the
+    redirect itself was never visible."""
+
+    # Home links to the redirecting path first, so the redirect target is NOT yet crawled.
+    HOME_LINKS = '<a href="/about">About</a>'
+    CONTACT_LINKS = ""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import functools
+        import http.server
+        import threading
+
+        cls.root = tempfile.mkdtemp(prefix="seo-repair-redirect-test-")
+        os.makedirs(os.path.join(cls.root, "about"))
+        os.makedirs(os.path.join(cls.root, "contact"))
+        with open(os.path.join(cls.root, "index.html"), "w", encoding="utf-8") as f:
+            f.write(page_html(body="<h1>Home</h1><p>" + cls.HOME_LINKS + " " +
+                                   ("home " * 300) + "</p>"))
+        with open(os.path.join(cls.root, "about", "index.html"), "w", encoding="utf-8") as f:
+            f.write(page_html(title="About This Site And Its Maker Title",
+                              body="<h1>About</h1><p>" + ("about " * 300) + "</p>"))
+        with open(os.path.join(cls.root, "contact", "index.html"), "w", encoding="utf-8") as f:
+            f.write(page_html(title="Contact The Team Behind This Site Title",
+                              body="<h1>Contact</h1><p>" + cls.CONTACT_LINKS + " " +
+                                   ("contact " * 300) + "</p>"))
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=cls.root)
+        cls.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        cls.httpd.RequestHandlerClass.log_message = lambda *a, **k: None
+        base = "http://127.0.0.1:{0}/".format(cls.httpd.server_address[1])
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+        cls.pages, _, robots, sitemap, _, _, cls.skipped, _, _ = crawl.crawl_http(base)
+        for p in cls.pages:
+            p["robots_allowed"], p["robots_rule"] = True, None
+        doc = {"meta": {"source": base, "mode": "http", "page_count": len(cls.pages),
+                        "base_url": None, "excluded_dirs_present": []},
+               "robots": {"found": False, "sitemaps": [], "groups": [], "raw": ""},
+               "sitemap": {"found": False, "urls": [], "notes": []},
+               "assets": [], "pages": cls.pages, "extras": {},
+               "referenced_assets": [], "referenced_basenames": []}
+        cls.ids = [f["id"] for f in audit.audit(doc)["findings"]]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def test_redirect_target_is_stored_once_under_its_final_path(self):
+        self.assertEqual(sorted(p["url"] for p in self.pages),
+                         ["/", "/about/"] + (["/contact/"] if self.CONTACT_LINKS else []))
+
+    def test_requested_path_becomes_an_alias(self):
+        about = [p for p in self.pages if p["url"] == "/about/"][0]
+        self.assertIn("/about", about["aliases"])
+
+    def test_no_false_duplicate_or_broken_link(self):
+        self.assertNotIn("S3-DUPLICATE-EXACT", self.ids)
+        self.assertNotIn("S1-BROKEN-LINK", self.ids)
+
+
+class TestHttpRedirectToCrawledTarget(TestHttpRedirects):
+    """The redirect target is crawled BEFORE the redirecting URL is fetched: home links
+    /about/ directly, then /contact/ links the redirecting /about. The second fetch must
+    not create a page, yet /about must still resolve (no S1-BROKEN-LINK)."""
+
+    HOME_LINKS = '<a href="/about/">About</a> <a href="/contact/">Contact</a>'
+    CONTACT_LINKS = '<a href="/about">About</a>'
 
 
 if __name__ == "__main__":

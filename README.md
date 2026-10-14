@@ -186,7 +186,7 @@ Findings cite the offending string from your source, so every one is checkable.
 python tests/test_skill.py
 ```
 
-59 tests, no fixture files — each builds a throwaway site in a temp directory. They pin
+79 tests, no fixture files — each builds a throwaway site in a temp directory. They pin
 down calibration decisions made after real false positives: build-directory exclusion,
 deliberate `noindex`, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,

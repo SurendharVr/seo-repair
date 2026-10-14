@@ -11,6 +11,7 @@ import argparse
 import json
 import re
 from collections import defaultdict
+from urllib.parse import urlsplit
 
 import seolib as S
 
@@ -62,9 +63,13 @@ def is_utility(url):
 
 def path_of(url_or_path):
     if url_or_path and url_or_path.startswith("http"):
-        from urllib.parse import urlsplit
         return S.norm_path(urlsplit(url_or_path).path or "/")
     return S.norm_path(url_or_path)
+
+
+def same_origin(url, base):
+    a, b = urlsplit(url), urlsplit(base)
+    return (a.scheme, a.netloc.lower()) == (b.scheme, b.netloc.lower())
 
 
 def build_index(doc):
@@ -97,6 +102,8 @@ def audit(doc, vitals=None, schema_findings=None):
             reasons.append("X-Robots-Tag noindex")
         indexable[p["url"]] = (not reasons, reasons)
 
+    home = "/" if "/" in by_url else (pages[0]["url"] if pages else None)
+
     # ---------------------------------------------------------- STAGE 1: index
     if not doc["robots"]["found"]:
         out.append(finding("S1-ROBOTS-MISSING", 1, "high",
@@ -127,14 +134,16 @@ def audit(doc, vitals=None, schema_findings=None):
                                    evidence=p["file"] or p["url"], recipe="sitemap-add"))
         if not ok:
             in_sm = p["url"] in sitemap_paths
-            deliberate = is_utility(p["url"]) or p.get("robots_allowed") is False
+            deliberate = is_utility(p["url"]) or (p.get("robots_allowed") is False
+                                                  and p["url"] != home)
             if in_sm:
                 # Listed in the sitemap AND blocked: the site is contradicting itself.
                 out.append(finding("S1-INDEX-CONTRADICTION", 1, "critical",
                                    "Page is in sitemap.xml but is not indexable: " + "; ".join(why),
                                    [p["url"]], evidence="; ".join(why), recipe="indexability-review"))
             elif not deliberate:
-                out.append(finding("S1-NOT-INDEXABLE", 1, "medium",
+                out.append(finding("S1-NOT-INDEXABLE", 1,
+                                   "critical" if p["url"] == home else "medium",
                                    "Page is not indexable: " + "; ".join(why), [p["url"]],
                                    evidence="; ".join(why), recipe="indexability-review"))
             else:
@@ -151,7 +160,7 @@ def audit(doc, vitals=None, schema_findings=None):
                                evidence=p["file"] or p["url"], recipe="canonical-add"))
             continue
         cpath = path_of(c)
-        if base and c.startswith("http") and not c.startswith(base):
+        if base and c.startswith("http") and not same_origin(c, base):
             out.append(finding("S1-CANONICAL-OFFSITE", 1, "critical",
                                "Canonical points to a different origin.", [p["url"]],
                                evidence=c, recipe="canonical-fix"))
@@ -224,8 +233,6 @@ def audit(doc, vitals=None, schema_findings=None):
             if t in alias and alias[t] != p["url"]:
                 inlinks[alias[t]].add(p["url"])
 
-    home = "/" if "/" in by_url else (pages[0]["url"] if pages else None)
-
     # click depth from home
     depth = {home: 0} if home else {}
     frontier = [home] if home else []
@@ -275,12 +282,11 @@ def audit(doc, vitals=None, schema_findings=None):
                                "Page has {0} H1 elements.".format(len(h1s)), [p["url"]],
                                evidence=" | ".join(h1s[:3]), recipe="heading-fix"))
         levels = [h["level"] for h in p["headings"]]
-        for a, b in zip(levels, levels[1:]):
+        for i, (a, b) in enumerate(zip(levels, levels[1:])):
             if b > a + 1:
-                idx = levels.index(b, levels.index(a) if a in levels else 0)
                 out.append(finding("S2-HEADING-SKIP", 2, "low",
                                    "Heading level jumps from H{0} to H{1}.".format(a, b), [p["url"]],
-                                   evidence="H{0} -> H{1}: {2}".format(a, b, p["headings"][min(idx, len(p['headings'])-1)]["text"][:80]),
+                                   evidence="H{0} -> H{1}: {2}".format(a, b, p["headings"][i + 1]["text"][:80]),
                                    recipe="heading-fix"))
                 break
 
@@ -506,6 +512,7 @@ def audit(doc, vitals=None, schema_findings=None):
     withheld = sorted(u for u, (ok, _) in indexable.items()
                       if not ok and u not in {i["url"] for i in intentional})
     return {"findings": out, "intentional": intentional,
+            "schema_checked": schema_findings is not None,
             "gates": compute_gates(out, withheld, doc["meta"].get("mode", "fs"))}
 
 
@@ -644,7 +651,8 @@ def main():
         stage_counts[f["stage"]] += 1
 
     S.jdump({
-        "meta": dict(doc["meta"], findings=len(findings)),
+        "meta": dict(doc["meta"], findings=len(findings),
+                      schema_checked=result["schema_checked"]),
         "summary": {"by_severity": dict(counts), "by_stage": dict(stage_counts)},
         "intentional_exclusions": intentional,
         "gates": result["gates"],
