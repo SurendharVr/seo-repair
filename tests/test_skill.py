@@ -225,6 +225,45 @@ class TestGrouping(Base):
         self.assertIn("S3-DUPLICATE-EXACT", ids)
         self.assertNotIn("S3-CANNIBALIZATION", ids)
 
+    def _cannibal_pairs(self):
+        pairs = set()
+        for f in self.fx.audit()["findings"]:
+            if f["id"] == "S3-CANNIBALIZATION":
+                pairs.add(frozenset(f["pages"]))
+        return pairs
+
+    def _write(self, path, title, desc, tag):
+        body = "<h1>{0}</h1><p>{1}</p>".format(tag, (tag + " ") * 300)
+        self.fx.write(path, page_html(title=title, desc=desc, body=body))
+
+    def test_templated_siblings_do_not_cannibalize(self):
+        """REGRESSION from the first real-site run (a catering site): five menu pages
+        sharing 'catering menu set dish' template words each flagged against the other
+        four, ten high findings for pages that target five different occasions. Terms
+        on a large share of the site are template words, not intent."""
+        for occ in ("lunch", "dinner", "tiffin", "housewarming", "seemantham"):
+            self._write("menu/%s/index.html" % occ,
+                        "%s Catering Menu Pure Veg Sets Kitchen" % occ.title(),
+                        "Every %s set menu dish listed for Pure Veg Catering in Kitchen "
+                        "menus and sets across the city." % occ, occ)
+        for n, t in enumerate(("Alpha Gallery Photos", "Bravo Contact Form", "Charlie Hiring")):
+            self._write("p%d/index.html" % n, t, "Distinct %s page content here." % t, t.split()[0])
+        self.assertEqual(self._cannibal_pairs(), set())
+
+    def test_real_cannibal_pair_still_flagged_among_templated_siblings(self):
+        """The template-word filter must not blind the check: two pages chasing the
+        same distinguishing terms are still reported."""
+        for occ in ("lunch", "dinner", "tiffin", "housewarming", "seemantham"):
+            self._write("menu/%s/index.html" % occ,
+                        "%s Catering Menu Pure Veg Sets Kitchen" % occ.title(),
+                        "Every %s set menu dish listed for Pure Veg Catering in Kitchen "
+                        "menus and sets across the city." % occ, occ)
+        for p, tag in (("wedding-a", "alpha"), ("wedding-b", "bravo")):
+            self._write(p + "/index.html", "Chennai Wedding Reception Hall Booking",
+                        "Book a Chennai wedding reception hall with parking.", tag)
+        self.assertEqual(self._cannibal_pairs(),
+                         {frozenset(("/wedding-a/", "/wedding-b/"))})
+
 
 # --------------------------------------------------------------- thresholds
 
@@ -344,6 +383,30 @@ class TestGates(Base):
 
 
 # --------------------------------------------------------------- schema
+
+class TestSchemaReferences(unittest.TestCase):
+    """REGRESSION from the first real-site run: a nested {"@id": ".../#business", "name"}
+    on eight Menu/Service pages was reported as a FoodEstablishment missing its address,
+    though the full node lives on another page. A reference is not a definition."""
+
+    FULL = {"@type": "FoodEstablishment", "@id": "https://x.test/#b", "name": "X",
+            "address": "1 Some Street"}
+    STUB = {"@type": "Menu", "name": "Lunch",
+            "provider": {"@type": "FoodEstablishment", "@id": "https://x.test/#b", "name": "X"}}
+
+    def _required(self, known):
+        page = {"url": "/menu/", "jsonld": [self.STUB], "jsonld_errors": []}
+        f, _ = schema_check.check_page(page, "", known)
+        return [x for x in f if x["id"] == "S5-SCHEMA-REQUIRED-MISSING"]
+
+    def test_stub_resolved_to_a_full_definition_elsewhere_is_not_flagged(self):
+        known = schema_check.known_props([{"jsonld": [self.FULL]}, {"jsonld": [self.STUB]}])
+        self.assertEqual(self._required(known), [])
+
+    def test_stub_with_no_definition_anywhere_is_still_flagged(self):
+        known = schema_check.known_props([{"jsonld": [self.STUB]}])
+        self.assertTrue(self._required(known))
+
 
 class TestSchemaClaims(unittest.TestCase):
     REVIEW = {"@type": "LocalBusiness", "name": "X", "address": "Some Street",
