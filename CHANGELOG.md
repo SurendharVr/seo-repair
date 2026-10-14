@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.5 - 2026-10-14
+
+The last open finding from the 1.0.3 code review: `vitals.py` on Windows.
 
 - **`vitals.py` no longer mis-parses page paths on Windows.** Lighthouse was started
   through `cmd.exe` with an unquoted URL, so `/search?q=a&lang=en` was measured as
