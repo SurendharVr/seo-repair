@@ -173,6 +173,7 @@ def extract_page(url, html, soup=None):
         # Carried in crawl.json so schema_check.py works identically in fs and http mode.
         "asset_refs": referenced_assets(soup, url),
         "asset_basenames": sorted(referenced_basenames(html)),
+        "visible_text": S.normalize_text(full_text).casefold(),
         "claim_text": S.claim_norm(full_text + " " + " ".join(
             l["href"].split(":", 1)[1] for l in links
             if l["kind"] == "nonhttp" and l["href"]

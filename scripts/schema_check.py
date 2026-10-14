@@ -107,6 +107,28 @@ def known_props(pages):
     return known
 
 
+_NAME_PUNCT = ".,;:!?()[]{}\"'-*|/\\“”‘’–—"
+
+
+def _words(s):
+    return [w for w in (t.strip(_NAME_PUNCT) for t in (s or "").casefold().split()) if w]
+
+
+def name_on_page(name, visible):
+    """Whether every real word of a reviewer's name is visible as a whole word.
+
+    True/False, or None when the name has no word longer than one character (an
+    initial is not evidence either way). Whole-word, script-agnostic comparison: a
+    substring test let 'Ann' match inside 'channel', and an [A-Za-z] pattern skipped
+    non-Latin names entirely.
+    """
+    tokens = [w for w in _words(name) if len(w) > 1]
+    if not tokens:
+        return None
+    present = set(_words(visible))
+    return all(t in present for t in tokens)
+
+
 def check_page(page, site_text_norm="", known_ids=None):
     """Return a list of schema findings for one crawled page.
 
@@ -117,6 +139,7 @@ def check_page(page, site_text_norm="", known_ids=None):
     findings = []
     url = page["url"]
     page_text_norm = page.get("claim_text") or norm(page.get("_text") or "")
+    visible = page.get("visible_text") or (page.get("_text") or "").casefold()
 
     if page["jsonld_errors"]:
         for e in page["jsonld_errors"]:
@@ -153,7 +176,7 @@ def check_page(page, site_text_norm="", known_ids=None):
             # Review markup: check each review's author name against the page. An author
             # who appears nowhere on the page means the review is not visible there, which
             # is a rich-results policy violation regardless of whether the review is real.
-            if "review" in node and page_text_norm:
+            if "review" in node and visible:
                 revs = node["review"]
                 revs = revs if isinstance(revs, list) else [revs]
                 absent = []
@@ -164,8 +187,7 @@ def check_page(page, site_text_norm="", known_ids=None):
                     name = author.get("name") if isinstance(author, dict) else author
                     if not isinstance(name, str) or not name.strip():
                         continue
-                    parts = [p for p in re.findall(r"[A-Za-z]{3,}", name)]
-                    if parts and not any(norm(p) in page_text_norm for p in parts):
+                    if name_on_page(name, visible) is False:
                         absent.append(name.strip())
                 if absent:
                     findings.append({

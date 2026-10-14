@@ -496,8 +496,33 @@ class TestSchemaClaims(unittest.TestCase):
         page = {"url": "/", "jsonld": [self.REVIEW], "jsonld_errors": []}
         if claim_text is not None:
             page["claim_text"] = S.claim_norm(claim_text)
+            page["visible_text"] = claim_text.casefold()
         f, _ = schema_check.check_page(page, page.get("claim_text", ""))
         return [x for x in f if x["id"] == "S5-SCHEMA-UNSUPPORTED-CLAIM"]
+
+    def _review_by(self, author, page_text):
+        biz = dict(self.REVIEW, review=[{"@type": "Review", "reviewBody": "ok",
+                                         "author": {"@type": "Person", "name": author}}])
+        page = {"url": "/", "jsonld": [biz], "jsonld_errors": [],
+                "claim_text": S.claim_norm(page_text), "visible_text": page_text.casefold()}
+        f, _ = schema_check.check_page(page, page["claim_text"])
+        return [x for x in f if x["id"] == "S5-SCHEMA-UNSUPPORTED-CLAIM"]
+
+    def test_name_inside_a_longer_word_is_not_a_match(self):
+        """REGRESSION found by the v1.0.3 review: 'ann' matched inside 'channel'."""
+        self.assertTrue(self._review_by("Ann Lee", "Our channel partners. Some Street"))
+
+    def test_short_names_are_checked(self):
+        self.assertTrue(self._review_by("Li Wu", "Nothing about them here. Some Street"))
+        self.assertFalse(self._review_by("Li Wu", "Li Wu said it was great. Some Street"))
+
+    def test_non_latin_names_are_checked(self):
+        tamil = "ராஜேஷ்"
+        self.assertTrue(self._review_by(tamil, "Nothing about them here. Some Street"))
+        self.assertFalse(self._review_by(tamil, "Review by " + tamil + ". Some Street"))
+
+    def test_initial_only_tokens_are_ignored(self):
+        self.assertFalse(self._review_by("Varsha B.", "Varsha said it was lovely. Some Street"))
 
     def test_visible_review_not_flagged(self):
         self.assertEqual(self._check("Jane Doe said: Great service. Some Street"), [])
