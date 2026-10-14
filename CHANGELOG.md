@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **`scripts/seo_repair.py`: the whole pipeline in one command.** `audit` chains crawl,
+  schema check, audit, report and dashboard for a folder or a URL; `verify` diffs a new
+  audit against an earlier `findings.json`; `--fail-on` turns open findings into a CI
+  exit code. Needs no agent. 2 new tests (58 total).
+
 Two false positives, both found by the first run against a real site (a 13-page
 catering site, http mode). 14 findings became 3, one of them real.
 
@@ -15,7 +20,7 @@ catering site, http mode). 14 findings became 3, one of them real.
   set dish" no longer flag each other ten ways. Two pages chasing the same
   distinguishing terms are still reported. Ceiling: a family of 5+ near-identical
   pages on a 13-page site reads as a template.
-- 4 new tests (56 total). Demo-site output is unchanged: 22 findings.
+- 4 new tests. Demo-site output is unchanged: 22 findings.
 
 ## 1.0.1
 

@@ -80,8 +80,8 @@ never catch it.
 ## Works with
 
 - **Full workflow:** Claude Code (audit, plan, apply, verify).
-- **Standalone:** the crawler, schema checker and audit scripts are plain Python 3.8+
-  and run anywhere.
+- **Standalone:** one command, `python scripts/seo_repair.py audit <folder|URL>`, runs
+  the whole pipeline on plain Python 3.8+. No agent needed. See below.
 - **Tested on:** Linux, macOS and Windows. The Lighthouse step is verified on Windows only.
 
 ## Install
@@ -102,6 +102,21 @@ pip install -r ~/.claude/skills/seo-repair/requirements.txt
 Requires Python 3.8+ with `beautifulsoup4` and `lxml` (`requests` only for http-mode
 crawling). Core Web Vitals additionally need Node and a local Chrome, via
 `npx lighthouse`.
+
+## Use it without an agent
+
+One command audits a site folder or a live URL and writes a report and dashboard. It
+edits nothing in the site.
+
+```bash
+python scripts/seo_repair.py audit ./my-site              # or https://example.com
+python scripts/seo_repair.py audit ./my-site --fail-on high   # exit 1 if a high/critical finding is open (CI gate)
+python scripts/seo_repair.py verify ./my-site --baseline seo-repair-out/findings.json
+```
+
+Output lands in `./seo-repair-out`: `findings.json`, `SEO-REPORT-<date>.md` and a
+self-contained `dashboard.html`. Applying fixes stays a Claude Code job, because each
+edit needs your approval.
 
 ## Try it on the demo site
 
@@ -166,7 +181,7 @@ Findings cite the offending string from your source, so every one is checkable.
 python tests/test_skill.py
 ```
 
-56 tests, no fixture files — each builds a throwaway site in a temp directory. They pin
+58 tests, no fixture files — each builds a throwaway site in a temp directory. They pin
 down calibration decisions made after real false positives: build-directory exclusion,
 deliberate `noindex`, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,
