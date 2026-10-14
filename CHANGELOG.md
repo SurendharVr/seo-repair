@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.2.1 - 2026-10-14
+
+Fixes from reviewing 1.2.0.
+
+- **Chrome keeps its sandbox on.** `--render` added `--no-sandbox` on every non-Windows
+  OS. It is now added only when running as root, or with `SEO_REPAIR_NO_SANDBOX=1`.
+- **A slash-less hreflang href is not a missing page.** `href="/en"` for the page `/en/`
+  was reported "does not exist". Case and file paths stay strict.
+- **Reciprocal hreflang alternates are not duplicates.** en-GB and en-US pages with the
+  same text were reported as a critical `S3-DUPLICATE-EXACT` and blocked Gate B. Pages
+  that do not name each other are still reported.
+- **The report says how many pages `--render` rendered**, and how many failed.
+- **`pyproject.toml` uses the SPDX `license` form**, ahead of setuptools dropping the old
+  one on 2027-02-18.
+- **The render test now runs in CI** against Chrome on Ubuntu.
+- **A second fixture, `examples/demo-site-intl/`**, plants one defect per 1.2.0 rule and is
+  checked by a unit test.
+- The 1.2.0 entry said "Fourteen new checks"; it is thirteen.
+- 12 new tests (144 total, two opt-in).
+
 ## 1.2.0 - 2026-10-14
 
 Closes the three biggest gaps found by comparing seo-repair with other SEO audit tools:

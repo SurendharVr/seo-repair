@@ -1,7 +1,7 @@
 {
   "name": "seo-repair",
   "displayName": "SEO Repair",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Crawl-driven SEO audit, repair planning and implementation for a local site codebase or its dev server. Proposes every edit before applying it, and never invents search volume, keyword difficulty or backlink data.",
   "author": {
     "name": "surendhar-v",

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "seo-repair"
 # Keep in step with .claude-plugin/plugin.json and SKILL.md; tests/test_skill.py checks it.
-version = "1.2.0"
+version = "1.2.1"
 description = "Technical SEO audit and repair: crawls a site folder or live URL, finds indexing, duplicate-content, link, hreflang and schema problems, and never invents a number it did not measure."
 readme = "README.md"
 license = "MIT"
