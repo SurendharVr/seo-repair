@@ -391,6 +391,7 @@ def crawl_http(start, max_pages=300, timeout=20):
     start_path = S.canonical_http_path(urlsplit(start).path or "/")
     seen, pages, queue = set(), [], deque([start_path])
     skipped = []
+    redirect_aliases = {}
 
     for loc in S.parse_sitemap(sitemap_xml)[0]:
         # Sitemap entries carry the production origin, which is not the origin being
@@ -424,6 +425,22 @@ def crawl_http(start, max_pages=300, timeout=20):
                             "status": r.status_code})
             continue
 
+        if r.history:
+            # r.url is where the redirect landed. The content belongs to THAT path; the
+            # requested path is an alias of it, not a second page with identical text.
+            final = urlsplit(r.url)
+            if "{0}://{1}".format(final.scheme, final.netloc) != origin:
+                skipped.append({"url": path, "reason": "redirects off-site to " + r.url,
+                                "status": r.history[0].status_code})
+                continue
+            target = S.canonical_http_path(final.path or "/")
+            if target != path:
+                redirect_aliases.setdefault(target, set()).add(path)
+                if target in seen:
+                    continue
+                seen.add(target)
+                path = target
+
         rec = extract_page(path, r.text)
         rec["file"] = None
         rec["aliases"] = sorted({path, path + "index.html"} if path.endswith("/") else {path})
@@ -442,6 +459,11 @@ def crawl_http(start, max_pages=300, timeout=20):
                 nxt = S.canonical_http_path(l["resolved"])
                 if nxt not in seen:
                     queue.append(nxt)
+
+    for p in pages:
+        extra = redirect_aliases.get(p["url"])
+        if extra:
+            p["aliases"] = sorted(set(p["aliases"]) | extra)
 
     refs = sorted({r for p in pages for r in (p.get('asset_refs') or [])})
     names = sorted({n for p in pages for n in (p.get('asset_basenames') or [])})

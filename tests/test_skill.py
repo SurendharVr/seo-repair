@@ -904,5 +904,82 @@ class TestHttpSitemapSeeding(unittest.TestCase):
         self.assertIn("S1-SITEMAP-ORPHAN", self.ids_for("/gone.html"))
 
 
+class TestHttpRedirects(unittest.TestCase):
+    """REGRESSION found by the v1.0.3 review: /about 301s to /about/, the crawl stored
+    the same content under both paths, S3-DUPLICATE-EXACT fired (critical) and the
+    redirect itself was never visible."""
+
+    # Home links to the redirecting path first, so the redirect target is NOT yet crawled.
+    HOME_LINKS = '<a href="/about">About</a>'
+    CONTACT_LINKS = ""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import functools
+        import http.server
+        import threading
+
+        cls.root = tempfile.mkdtemp(prefix="seo-repair-redirect-test-")
+        os.makedirs(os.path.join(cls.root, "about"))
+        os.makedirs(os.path.join(cls.root, "contact"))
+        with open(os.path.join(cls.root, "index.html"), "w", encoding="utf-8") as f:
+            f.write(page_html(body="<h1>Home</h1><p>" + cls.HOME_LINKS + " " +
+                                   ("home " * 300) + "</p>"))
+        with open(os.path.join(cls.root, "about", "index.html"), "w", encoding="utf-8") as f:
+            f.write(page_html(title="About This Site And Its Maker Title",
+                              body="<h1>About</h1><p>" + ("about " * 300) + "</p>"))
+        with open(os.path.join(cls.root, "contact", "index.html"), "w", encoding="utf-8") as f:
+            f.write(page_html(title="Contact The Team Behind This Site Title",
+                              body="<h1>Contact</h1><p>" + cls.CONTACT_LINKS + " " +
+                                   ("contact " * 300) + "</p>"))
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=cls.root)
+        cls.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        cls.httpd.RequestHandlerClass.log_message = lambda *a, **k: None
+        base = "http://127.0.0.1:{0}/".format(cls.httpd.server_address[1])
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+        cls.pages, _, robots, sitemap, _, _, cls.skipped, _, _ = crawl.crawl_http(base)
+        for p in cls.pages:
+            p["robots_allowed"], p["robots_rule"] = True, None
+        doc = {"meta": {"source": base, "mode": "http", "page_count": len(cls.pages),
+                        "base_url": None, "excluded_dirs_present": []},
+               "robots": {"found": False, "sitemaps": [], "groups": [], "raw": ""},
+               "sitemap": {"found": False, "urls": [], "notes": []},
+               "assets": [], "pages": cls.pages, "extras": {},
+               "referenced_assets": [], "referenced_basenames": []}
+        cls.ids = [f["id"] for f in audit.audit(doc)["findings"]]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def test_redirect_target_is_stored_once_under_its_final_path(self):
+        self.assertEqual(sorted(p["url"] for p in self.pages),
+                         ["/", "/about/"] + (["/contact/"] if self.CONTACT_LINKS else []))
+
+    def test_requested_path_becomes_an_alias(self):
+        about = [p for p in self.pages if p["url"] == "/about/"][0]
+        self.assertIn("/about", about["aliases"])
+
+    def test_no_false_duplicate_or_broken_link(self):
+        self.assertNotIn("S3-DUPLICATE-EXACT", self.ids)
+        self.assertNotIn("S1-BROKEN-LINK", self.ids)
+
+
+class TestHttpRedirectToCrawledTarget(TestHttpRedirects):
+    """The redirect target is crawled BEFORE the redirecting URL is fetched: home links
+    /about/ directly, then /contact/ links the redirecting /about. The second fetch must
+    not create a page, yet /about must still resolve (no S1-BROKEN-LINK)."""
+
+    HOME_LINKS = '<a href="/about/">About</a> <a href="/contact/">Contact</a>'
+    CONTACT_LINKS = '<a href="/about">About</a>'
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
