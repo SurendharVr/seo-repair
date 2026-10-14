@@ -97,6 +97,8 @@ def audit(doc, vitals=None, schema_findings=None):
             reasons.append("X-Robots-Tag noindex")
         indexable[p["url"]] = (not reasons, reasons)
 
+    home = "/" if "/" in by_url else (pages[0]["url"] if pages else None)
+
     # ---------------------------------------------------------- STAGE 1: index
     if not doc["robots"]["found"]:
         out.append(finding("S1-ROBOTS-MISSING", 1, "high",
@@ -127,14 +129,16 @@ def audit(doc, vitals=None, schema_findings=None):
                                    evidence=p["file"] or p["url"], recipe="sitemap-add"))
         if not ok:
             in_sm = p["url"] in sitemap_paths
-            deliberate = is_utility(p["url"]) or p.get("robots_allowed") is False
+            deliberate = is_utility(p["url"]) or (p.get("robots_allowed") is False
+                                                  and p["url"] != home)
             if in_sm:
                 # Listed in the sitemap AND blocked: the site is contradicting itself.
                 out.append(finding("S1-INDEX-CONTRADICTION", 1, "critical",
                                    "Page is in sitemap.xml but is not indexable: " + "; ".join(why),
                                    [p["url"]], evidence="; ".join(why), recipe="indexability-review"))
             elif not deliberate:
-                out.append(finding("S1-NOT-INDEXABLE", 1, "medium",
+                out.append(finding("S1-NOT-INDEXABLE", 1,
+                                   "critical" if p["url"] == home else "medium",
                                    "Page is not indexable: " + "; ".join(why), [p["url"]],
                                    evidence="; ".join(why), recipe="indexability-review"))
             else:
@@ -223,8 +227,6 @@ def audit(doc, vitals=None, schema_findings=None):
             t = S.norm_path(l["resolved"])
             if t in alias and alias[t] != p["url"]:
                 inlinks[alias[t]].add(p["url"])
-
-    home = "/" if "/" in by_url else (pages[0]["url"] if pages else None)
 
     # click depth from home
     depth = {home: 0} if home else {}

@@ -171,6 +171,22 @@ class TestExclusions(Base):
         self.assertTrue(crit, "sitemap-listed blocked page must be critical")
         self.assertEqual(crit[0]["severity"], "critical")
 
+    def test_robots_blocking_the_homepage_is_not_deliberate(self):
+        """REGRESSION found by the v1.0.3 review: `Disallow: /` with a sitemap that
+        lists nothing filed every page as a deliberate exclusion, so Gate A read
+        CLEAR 'every crawled page is indexable'."""
+        self.fx.write("index.html", page_html())
+        self.fx.write("about.html", page_html(title="About Us Page Title That Is Long Enough"))
+        self.fx.write("robots.txt", "User-agent: *\nDisallow: /\n")
+        self.fx.write("sitemap.xml", "<urlset></urlset>")
+        res = self.fx.audit()
+        gate_a = [g for g in res["gates"] if g["gate"] == "A"][0]
+        self.assertEqual(gate_a["status"], "BLOCKED")
+        self.assertIn("/", gate_a["pages"])
+        crit = [f for f in res["findings"]
+                if f["id"] == "S1-NOT-INDEXABLE" and f["severity"] == "critical"]
+        self.assertTrue(crit, "a robots-blocked homepage is never a deliberate exclusion")
+
 
 # --------------------------------------------------------------- Gate A
 
