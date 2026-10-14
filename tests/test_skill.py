@@ -1438,6 +1438,15 @@ class TestPackaging(unittest.TestCase):
         import build_dashboard
         self.assertTrue(os.path.isfile(build_dashboard.TEMPLATE))
 
+    def test_license_metadata_is_not_the_deprecated_form(self):
+        """setuptools drops the table form of `license` and license classifiers on
+        2027-02-18. SPDX string + setuptools>=77 is the supported spelling."""
+        text = self._read("pyproject.toml")
+        self.assertIn('license = "MIT"', text)
+        self.assertNotIn("license = {", text)
+        self.assertNotIn("License ::", text)
+        self.assertIn("setuptools>=77", text)
+
 
 class TestVitalsCommand(unittest.TestCase):
     """REGRESSION found by the v1.0.3 review: on Windows the Lighthouse command ran
