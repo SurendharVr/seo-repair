@@ -155,7 +155,7 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospa
   padding:6px 3px;border-radius:2px;
 }
 .gate-clear span{background:var(--ok-bg);color:var(--ok)}
-.gate-block span{background:var(--block-bg);color:var(--block)}
+.gate-blocked span{background:var(--block-bg);color:var(--block)}
 /* A gate nobody could assess reads as neutral, never as a pass -- same rule as the
    stage rail's "not measured" state. */
 .gate-unassessed span{background:var(--surface-2);color:var(--ink-3)}
@@ -292,7 +292,7 @@ const STAGE_NAMES = {1:"Crawl & Indexing",2:"Architecture",3:"Content & On-Page"
   4:"Performance",5:"Structured Data",6:"Authority",7:"QA & Monitoring"};
 // Three states, not two. Anything that is not an explicit CLEAR must not be painted
 // as a pass -- "NOT ASSESSED" used to fall through to the green pill.
-const gateClass = s => s==="BLOCKED" ? "gate-block"
+const gateClass = s => s==="BLOCKED" ? "gate-blocked"
                      : s==="CLEAR"   ? "gate-clear"
                      : "gate-unassessed";
 

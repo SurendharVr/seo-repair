@@ -18,6 +18,7 @@ Reference for interpreting findings. Fixes live in `fix-recipes.md`.
 | `S1-CANONICAL-MISSING` | No canonical on an indexable page | medium |
 | `S1-CANONICAL-CROSS` | Canonical points at a different page | high — may be deliberate; ask |
 | `S1-CANONICAL-BROKEN` / `-OFFSITE` | Canonical points to a non-existent URL or another origin (scheme and host compared, not a string prefix) | critical |
+| `S1-PLACEHOLDER-DOMAIN` | Canonicals, `og:url`, sitemap URLs or a robots `Sitemap:` line use a placeholder origin (example.com/.org/.net, `localhost`, `.test` and the like) | high — the base origin is inferred from these same URLs, so a uniformly wrong site looks consistent to every other check |
 | `S1-BROKEN-LINK` | Internal link to a URL that doesn't exist | high |
 | `S1-URL-UNCLEAN` | Uppercase, underscores, or spaces in a URL | medium |
 | `S1-URL-MIXED-CONVENTION` | Site mixes `/page` and `/page.html` | medium, low confidence |
@@ -64,6 +65,7 @@ one fix, not N fixes. Check whether the file is shared before estimating effort.
 | `S3-ASSET-UNUSED` | Media files nothing references. Dead weight in the deploy package. Suppressed if the filename appears anywhere in any page's source, so false positives are unlikely — but verify before deleting. |
 | `S3-VIEWPORT-MISSING` | Critical — the page is not mobile-friendly at all. |
 | `S3-LANG-MISSING` | No `lang` on `<html>`. |
+| `S3-OG-MISSING` | Indexable page lacks `og:title`, `og:description` or `og:image` (names the missing ones). Low — sharing previews, not ranking. Noindex and 404-style pages are skipped. |
 
 ### E-E-A-T
 

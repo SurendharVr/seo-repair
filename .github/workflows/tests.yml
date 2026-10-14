@@ -46,6 +46,7 @@ jobs:
               "S3-TITLE-DUPLICATE", "S3-DESC-DUPLICATE", "S3-TITLE-SHORT",
               "S3-IMG-HEAVY", "S3-THIN", "S3-IMG-ALT-MISSING", "S3-IMG-DIMS-MISSING",
               "S2-HEADING-SKIP", "S5-SCHEMA-UNSUPPORTED-CLAIM", "S3-ASSET-UNUSED",
+              "S1-PLACEHOLDER-DOMAIN", "S3-OG-MISSING",
           }
           missing = sorted(required - ids)
           gates = {g["gate"]: g["status"] for g in d["gates"]}

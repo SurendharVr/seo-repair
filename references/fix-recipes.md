@@ -41,6 +41,12 @@ A cross-canonical (`S1-CANONICAL-CROSS`) tells Google to drop this page in favou
 another. That is sometimes correct — a deliberate duplicate — and sometimes an
 accident. Ask which before "fixing" it.
 
+### `domain-fix` — care
+Replace the placeholder origin with the real production origin everywhere the finding's
+evidence lists it: canonicals, `og:url`, every `<loc>` in `sitemap.xml`, and the
+`Sitemap:` line in `robots.txt`. Do it in one batch, so the site never mixes two origins.
+Ask for the real origin; never guess it.
+
 ### `broken-link-fix` — safe
 Repoint to the correct URL, or remove the link. Check `detail.refs` for every source
 page; a broken link in a shared header or footer appears once as a finding but is one
@@ -132,6 +138,15 @@ below-fold images only. **Never lazy-load the LCP image** — it makes LCP worse
 Applies to `<picture>`/`<source srcset>` candidates too: those are what the browser
 actually downloads, so a heavy `.webp` behind a `<picture>` costs exactly as much as a
 heavy `<img src>`.
+
+### `og-add` — safe
+```html
+<meta property="og:title" content="<page title>">
+<meta property="og:description" content="<one-sentence summary>">
+<meta property="og:image" content="https://<origin>/path/to/image.jpg">
+```
+Use an image that really represents the page (about 1200x630), reachable by absolute URL.
+Reuse the page's own title and description; write nothing the page does not say.
 
 ### `lang-add` / `viewport-add` — safe
 ```html

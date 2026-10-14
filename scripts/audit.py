@@ -67,6 +67,31 @@ def path_of(url_or_path):
     return S.norm_path(url_or_path)
 
 
+# Names that can never be a real site's own origin: the RFC 2606 / 6761 reserved names,
+# loopback, and the template strings that ship in themes and starters.
+PLACEHOLDER_NAMES = {"example.com", "example.org", "example.net", "example.edu", "localhost",
+                     "127.0.0.1", "0.0.0.0", "::1", "yourdomain.com", "yoursite.com",
+                     "yourwebsite.com"}
+PLACEHOLDER_TLDS = (".example", ".test", ".invalid", ".localhost")
+
+
+def is_placeholder_host(host):
+    h = (host or "").lower()
+    return (h in PLACEHOLDER_NAMES or h.endswith(PLACEHOLDER_TLDS)
+            or any(h.endswith("." + n) for n in PLACEHOLDER_NAMES))
+
+
+def placeholder_host_of(url):
+    """The placeholder hostname in an absolute URL, or None."""
+    if not url or not url.startswith("http"):
+        return None
+    host = urlsplit(url).hostname
+    return host if is_placeholder_host(host) else None
+
+
+OG_REQUIRED = ("og:title", "og:description", "og:image")
+
+
 def same_origin(url, base):
     a, b = urlsplit(url), urlsplit(base)
     return (a.scheme, a.netloc.lower()) == (b.scheme, b.netloc.lower())
@@ -173,6 +198,32 @@ def audit(doc, vitals=None, schema_findings=None):
                                "Canonical points at a different page (self-canonical expected).",
                                [p["url"]], evidence=c, recipe="canonical-fix",
                                detail={"points_to": alias[cpath]}))
+
+    # A placeholder origin in canonicals, og:url, the sitemap or the robots Sitemap line.
+    # The base origin is inferred from those same URLs, so a site that is uniformly wrong
+    # looks internally consistent and none of the canonical checks above can see it.
+    where, hosts, on_pages = [], set(), set()
+    for label, getter in (("canonical", lambda p: p.get("canonical")),
+                          ("og:url", lambda p: (p.get("og") or {}).get("og:url"))):
+        hit = [(p["url"], placeholder_host_of(getter(p))) for p in pages]
+        hit = [(u, h) for u, h in hit if h]
+        if hit:
+            where.append("{0} on {1} page(s)".format(label, len(hit)))
+            hosts.update(h for _, h in hit)
+            on_pages.update(u for u, _ in hit)
+    for label, urls in (("sitemap.xml", doc["sitemap"]["urls"]),
+                        ("robots.txt Sitemap line", doc["robots"]["sitemaps"])):
+        hit = [placeholder_host_of(u) for u in urls]
+        hit = [h for h in hit if h]
+        if hit:
+            where.append("{0} ({1} URL(s))".format(label, len(hit)))
+            hosts.update(hit)
+    if where:
+        out.append(finding("S1-PLACEHOLDER-DOMAIN", 1, "high",
+                           "URLs point at a placeholder domain ({0}), not the site's own."
+                           .format(", ".join(sorted(hosts))),
+                           sorted(on_pages) or ["/"],
+                           evidence="; ".join(where), recipe="domain-fix"))
 
     # broken internal links
     broken = defaultdict(list)
@@ -418,6 +469,14 @@ def audit(doc, vitals=None, schema_findings=None):
             out.append(finding("S3-VIEWPORT-MISSING", 3, "critical",
                                "No viewport meta tag -- page will not be mobile-friendly.", [p["url"]],
                                evidence="meta viewport absent", recipe="viewport-add"))
+        if not is_utility(p["url"]):
+            og = p.get("og") or {}
+            missing = [k for k in OG_REQUIRED if not og.get(k)]
+            if missing:
+                out.append(finding("S3-OG-MISSING", 3, "low",
+                                   "Open Graph tags are incomplete, so shared links get a poor preview.",
+                                   [p["url"]], evidence="missing " + ", ".join(missing),
+                                   recipe="og-add"))
 
         for img in p["images"]:
             src = img.get("src") or "(no src)"
