@@ -54,7 +54,7 @@ one fix, not N fixes. Check whether the file is shared before estimating effort.
 | --- | --- |
 | `S3-DUPLICATE-EXACT` | Byte-identical main content. Critical: Google picks one and the other's effort is wasted. |
 | `S3-NEAR-DUPLICATE` | ≥80% estimated Jaccard similarity. Medium confidence — read both before merging. |
-| `S3-CANNIBALIZATION` | ≥60% overlap in head terms across title/H1/description. Suppressed when the pair is already a duplicate — same root cause. |
+| `S3-CANNIBALIZATION` | ≥60% overlap in head terms across title/H1/description, after dropping template words (terms on ≥35% of pages, minimum 4). Suppressed when the pair is already a duplicate — same root cause. |
 | `S3-THIN` | Under 250 words of *main* content (nav/header/footer excluded). Verify against the rendered DOM first. |
 | `S3-TITLE-MISSING` / `-DUPLICATE` / `-SHORT` / `-LONG` | Target 50–60 chars; only flagged past 65, since the real limit is pixel width. |
 | `S3-DESC-*` | Target 70–160 chars. Not a ranking factor — it is SERP ad copy. |
@@ -101,7 +101,7 @@ then assert no horizontal overflow —
 | --- | --- |
 | `S5-SCHEMA-INVALID-JSON` | A JSON-LD block doesn't parse — it is entirely ignored by Google. |
 | `S5-SCHEMA-MISSING` | No structured data on an indexable page. |
-| `S5-SCHEMA-REQUIRED-MISSING` | A required property for that type is absent. |
+| `S5-SCHEMA-REQUIRED-MISSING` | A required property for that type is absent. A nested `@id` reference is not checked on its own when the full node is defined elsewhere on the site. |
 | `S5-SCHEMA-RECOMMENDED-MISSING` | Recommended property absent. Low. |
 | `S5-SCHEMA-UNSUPPORTED-CLAIM` | **The important one.** Markup asserts content not corroborated on the site. |
 | `S5-SCHEMA-CLAIM-OFFPAGE` | Content is elsewhere on the site but not this page. Usually fine for a shared business block. |

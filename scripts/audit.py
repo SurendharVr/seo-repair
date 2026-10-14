@@ -330,6 +330,19 @@ def audit(doc, vitals=None, schema_findings=None):
                          p.get("meta_description") or ""])
         sigs[p["url"]] = top_terms(blob, 12)
     urls = [p["url"] for p in live]
+    # Terms on a large share of the site ("catering", "menu", the brand) are template
+    # words: they say nothing about which page targets what. Left in, they make every
+    # sibling in a templated section (lunch/dinner/tiffin menus) look like it competes
+    # with every other. Compare on the remaining, distinguishing terms only.
+    # ponytail: a family of 5+ near-identical pages on a 13-page site is read as a
+    # template and goes unreported; use the duplicate checks for those.
+    df = defaultdict(int)
+    for u in urls:
+        for w in sigs[u]:
+            df[w] += 1
+    boiler = {w for w, n in df.items() if n >= max(4, 0.35 * len(urls))}
+    for u in urls:
+        sigs[u] -= boiler
     for i, a in enumerate(urls):
         for b in urls[i + 1:]:
             if frozenset((a, b)) in seen_pairs:

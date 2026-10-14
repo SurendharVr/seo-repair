@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+Two false positives, both found by the first run against a real site (a 13-page
+catering site, http mode). 14 findings became 3, one of them real.
+
+- **`S5-SCHEMA-REQUIRED-MISSING` no longer fires on `@id` references.** A nested
+  `{"@id": ".../#business", "name": ...}` on a Menu or Service page was reported as a
+  FoodEstablishment missing its address, though the full node is defined on another
+  page. A property defined for that `@id` anywhere on the site now counts. A business
+  with no address anywhere is still flagged.
+- **`S3-CANNIBALIZATION` ignores template words.** Terms on at least 35% of pages
+  (minimum 4) are dropped before comparing, so five menu pages sharing "catering menu
+  set dish" no longer flag each other ten ways. Two pages chasing the same
+  distinguishing terms are still reported. Ceiling: a family of 5+ near-identical
+  pages on a 13-page site reads as a template.
+- 4 new tests (56 total). Demo-site output is unchanged: 22 findings.
+
 ## 1.0.1
 
 Two http-mode defects, both found by scoring the tool against its own demo fixture

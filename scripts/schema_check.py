@@ -91,7 +91,23 @@ def norm(s):
     return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
 
 
-def check_page(page, site_text_norm=""):
+def known_props(pages):
+    """Map every @id on the site to the properties defined for it anywhere.
+
+    A nested {"@id": ".../#business", "name": ...} is a reference to an entity defined
+    in full elsewhere (typically the home or about page), not a second definition that
+    has to satisfy the required properties on its own.
+    """
+    known = defaultdict(set)
+    for p in pages:
+        for block in p["jsonld"]:
+            for _, node in walk(block):
+                if isinstance(node, dict) and isinstance(node.get("@id"), str):
+                    known[node["@id"]].update(k for k in node if not k.startswith("@"))
+    return known
+
+
+def check_page(page, site_text_norm="", known_ids=None):
     """Return a list of schema findings for one crawled page.
 
     Claim corroboration needs the page's visible text. When that is unavailable the
@@ -117,8 +133,9 @@ def check_page(page, site_text_norm=""):
                 spec = SPEC.get(t)
                 if not spec:
                     continue
+                defined = (known_ids or {}).get(node.get("@id"), ())
                 for prop in spec["required"]:
-                    if prop not in node:
+                    if prop not in node and prop not in defined:
                         findings.append({
                             "id": "S5-SCHEMA-REQUIRED-MISSING", "severity": "high", "page": url,
                             "message": "{0} is missing required property '{1}'.".format(t, prop),
@@ -272,8 +289,9 @@ def main():
                       if not (p.get("claim_text") or p.get("_text"))]
 
     # Pass 2: validate, scoring each claim against this page and against the whole site.
+    known_ids = known_props(doc["pages"])
     for p in doc["pages"]:
-        f, types = check_page(p, site_text_norm)
+        f, types = check_page(p, site_text_norm, known_ids)
         all_findings.extend(f)
         by_page[p["url"]] = types
 

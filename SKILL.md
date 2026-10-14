@@ -138,7 +138,7 @@ Run before and after changing anything in `scripts/`:
 python tests/test_skill.py
 ```
 
-52 tests, no fixture files -- each builds a throwaway site in a temp directory. They
+56 tests, no fixture files -- each builds a throwaway site in a temp directory. They
 pin down calibration decisions made after real false positives (build-dir exclusion,
 deliberate noindex, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries). A failure means "was this behaviour meant to change",
