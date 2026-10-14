@@ -1178,10 +1178,10 @@ class TestSitemapLastmod(Base):
 
 
 class TestSecurityHeaders(Base):
-    def _ids(self, base, headers, mode="http"):
+    def _ids(self, base, headers, mode="http", source=None):
         self.fx.write("index.html", page_html())
         doc = self.fx.crawl()
-        doc["meta"].update(mode=mode, base_url=base)
+        doc["meta"].update(mode=mode, base_url=base, source=base if source is None else source)
         for p in doc["pages"]:
             p["status"] = 200
             if headers is not None:
@@ -1197,6 +1197,12 @@ class TestSecurityHeaders(Base):
     def test_present_headers_are_clean(self):
         self.assertEqual(self._ids("https://acme-widgets.com", {
             "strict-transport-security": "max-age=1", "x-content-type-options": "nosniff"}), [])
+
+    def test_https_canonicals_on_a_plain_http_crawl_are_never_nagged(self):
+        """REGRESSION found by the PR #12 review: base_url is inferred from the canonicals,
+        so crawling a local http dev server of an https site reported 'HSTS missing' --
+        a header that cannot be sent over http, so the finding could never be fixed."""
+        self.assertEqual(self._ids("https://acme-widgets.com", {}, source="http://127.0.0.1:8000/"), [])
 
     def test_plain_http_dev_server_is_never_nagged(self):
         self.assertEqual(self._ids("http://127.0.0.1:8000", {}), [])
@@ -1437,6 +1443,67 @@ class TestPackaging(unittest.TestCase):
     def test_dashboard_template_resolves_in_the_source_tree(self):
         import build_dashboard
         self.assertTrue(os.path.isfile(build_dashboard.TEMPLATE))
+
+
+class TestHttpRedirectChainOrder(unittest.TestCase):
+    """REGRESSION found by the PR #12 review: when the redirect target had already been
+    crawled directly, the chain leading to it was discarded and S1-REDIRECT-CHAIN never
+    fired. Home links to /c first, then to /a, and /a -> /b -> /c."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+        redirects = {"/a": "/b", "/b": "/c"}
+        pages = {"/": page_html(title="Home Page With An Adequate Title", body=(
+                     '<h1>H</h1><p><a href="/c">c</a> <a href="/a">a</a> ' + "word " * 300 + "</p>")),
+                 "/c": page_html(title="Chain Target Page With A Fine Title")}
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path in redirects:
+                    self.send_response(301)
+                    self.send_header("Location", redirects[self.path])
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                body = pages.get(self.path, "nope").encode()
+                self.send_response(200 if self.path in pages else 404)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        cls.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        base = "http://127.0.0.1:%d/" % cls.srv.server_address[1]
+        cls.pages, _, _, _, _, _, skipped, _, _ = crawl.crawl_http(base)
+        for p in cls.pages:
+            p["robots_allowed"], p["robots_rule"] = True, None
+        doc = {"meta": {"source": base, "mode": "http", "page_count": len(cls.pages),
+                        "base_url": None, "excluded_dirs_present": [], "skipped": skipped},
+               "robots": {"found": False, "sitemaps": [], "groups": [], "raw": ""},
+               "sitemap": {"found": False, "urls": [], "notes": []},
+               "assets": [], "pages": cls.pages, "extras": {},
+               "referenced_assets": [], "referenced_basenames": []}
+        cls.chains = [f for f in audit.audit(doc)["findings"] if f["id"] == "S1-REDIRECT-CHAIN"]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def test_chain_is_reported_even_though_the_target_was_crawled_first(self):
+        self.assertEqual([f["pages"] for f in self.chains], [["/c"]])
+        for hop in ("/a", "/b", "/c"):
+            self.assertIn(hop, self.chains[0]["evidence"])
 
 
 class TestVitalsCommand(unittest.TestCase):

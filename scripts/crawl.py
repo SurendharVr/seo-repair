@@ -441,6 +441,7 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
     seen, pages, queue = set(), [], deque([start_path])
     skipped = []
     redirect_aliases = {}
+    chains = {}   # final path -> longest list of URLs that led to it, even when it was crawled first
 
     for loc in S.parse_sitemap(sitemap_xml)[0]:
         # Sitemap entries carry the production origin, which is not the origin being
@@ -483,6 +484,9 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
                                 "status": r.history[0].status_code})
                 continue
             target = S.canonical_http_path(final.path or "/")
+            hops = [h.url for h in r.history] + [r.url]
+            if len(hops) > len(chains.get(target, ())):
+                chains[target] = hops
             if target != path:
                 redirect_aliases.setdefault(target, set()).add(path)
                 if target in seen:
@@ -531,6 +535,9 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
         extra = redirect_aliases.get(p["url"])
         if extra:
             p["aliases"] = sorted(set(p["aliases"]) | extra)
+        chain = chains.get(p["url"])
+        if chain and len(chain) > len(p.get("redirect_hops") or ()):
+            p["redirect_hops"] = chain
 
     refs = sorted({r for p in pages for r in (p.get('asset_refs') or [])})
     names = sorted({n for p in pages for n in (p.get('asset_basenames') or [])})

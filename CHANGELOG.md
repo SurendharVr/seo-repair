@@ -27,7 +27,7 @@ rule coverage, JavaScript rendering outside Claude Code, and distribution.
   (one-time setup on pypi.org, see `RELEASING.md`). **Not yet published**; install with
   `pip install git+https://github.com/SurendharVr/seo-repair` until it is.
 - **Python 3.9+.** The README said 3.8, which CI never tested and which is end-of-life.
-- 36 new tests (132 total, two opt-in), including a threaded server that redirects
+- 38 new tests (134 total, two opt-in), including a threaded server that redirects
   `/a -> /b -> /c`, loops, and sends response headers, and a version-agreement test across
   `pyproject.toml`, `plugin.json` and `SKILL.md`.
 
