@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import audit          # noqa: E402
 import crawl          # noqa: E402
 import schema_check   # noqa: E402
+import seo_repair     # noqa: E402
 import seolib as S    # noqa: E402
 import verify as V    # noqa: E402
 
@@ -380,6 +381,30 @@ class TestGates(Base):
         self.fx.write("dupe.html", html)
         gate_c = [g for g in self.fx.audit()["gates"] if g["gate"] == "C"][0]
         self.assertEqual(gate_c["status"], "BLOCKED")
+
+
+# --------------------------------------------------------------- cli
+
+class TestCli(Base):
+    def test_audit_writes_every_artifact_and_edits_nothing(self):
+        self.fx.write("index.html", page_html())
+        before = sorted(os.listdir(self.fx.root))
+        out = os.path.join(tempfile.mkdtemp(prefix="seo-repair-out-"), "o")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        findings = seo_repair.audit(self.fx.root, out, 200, None)
+        names = os.listdir(out)
+        for want in ("crawl.json", "schema.json", "findings.json", "report-data.json",
+                     "dashboard.html"):
+            self.assertIn(want, names)
+        self.assertTrue(any(n.startswith("SEO-REPORT-") for n in names))
+        self.assertEqual(sorted(os.listdir(self.fx.root)), before, "audit must not touch the site")
+        self.assertGreaterEqual(seo_repair.worst_open(findings), -1)
+
+    def test_worst_open_ranks_severity(self):
+        path = os.path.join(self.fx.root, "f.json")
+        with open(path, "w") as f:
+            json.dump({"findings": [{"severity": "low"}, {"severity": "high"}]}, f)
+        self.assertEqual(seo_repair.SEVERITY[seo_repair.worst_open(path)], "high")
 
 
 # --------------------------------------------------------------- schema
