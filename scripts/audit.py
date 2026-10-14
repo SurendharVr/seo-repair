@@ -121,7 +121,13 @@ def hreflang_target(href, page_url, alias, base):
     if kind not in ("internal", "absolute"):
         return "internal", None
     path = path_of(href) if kind == "absolute" else resolved
-    return "internal", alias.get(S.norm_path(path))
+    key = S.norm_path(path)
+    found = alias.get(key)
+    if found is None and "." not in key.rstrip("/").rsplit("/", 1)[-1]:
+        # ponytail: /en and /en/ are one page behind a redirect. Google wants the final URL
+        # in hreflang and this does not flag the redirecting form; add a low finding if it matters.
+        found = alias.get(key[:-1] if key.endswith("/") else key + "/")
+    return "internal", found
 
 
 def same_origin(url, base):

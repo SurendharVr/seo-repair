@@ -1126,6 +1126,23 @@ class TestHreflang(Base):
         ids = [f["id"] for f in audit.audit(doc)["findings"]]
         self.assertNotIn("S1-HREFLANG-BROKEN", ids)
 
+    def test_slashless_href_resolves_against_an_http_mode_alias_set(self):
+        """An http crawl records a directory page as {/en/, /en/index.html}, with no
+        slash-less alias, so /en used to be reported as a page that does not exist.
+        (fs crawls already alias /en, which is why this is not a Fixture test.)"""
+        alias = {"/en/": "/en/", "/en/index.html": "/en/"}
+        self.assertEqual(audit.hreflang_target("/en", "/", alias, None), ("internal", "/en/"))
+        self.assertEqual(audit.hreflang_target("https://acme-widgets.com/en", "/", alias, None),
+                         ("internal", "/en/"))
+        self.assertEqual(audit.hreflang_target("/en/", "/", {"/en": "/en"}, None), ("internal", "/en"))
+
+    def test_wrong_case_and_file_paths_stay_broken(self):
+        """Guard: the tolerance is for directory slashes only. Paths are case-sensitive
+        and /about.html is not /about.html/."""
+        hits = self._ids(alt(("en", "/en/"), ("fr", "/FR/")), alt(("fr", "/fr/"), ("en", "/en/")))
+        self.assertIn(("S1-HREFLANG-BROKEN", ("/en/",)), [h[:2] for h in hits])
+        self.assertIsNone(audit.hreflang_target("/about.html/", "/", {"/about.html": "/about.html"}, None)[1])
+
 
 class TestMixedContent(Base):
     def _hit(self, body_extra="", canonical="https://acme-widgets.com/"):
