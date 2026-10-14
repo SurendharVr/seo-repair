@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **A re-run no longer audits its own last report.** With `--out` inside the audited
+  folder (the default for `audit .`), the second run crawled the first run's
+  `dashboard.html` and the demo site went from 22 findings to 29. `seo-repair-out` is now
+  excluded from the crawl and ignored by git.
+- **GitHub Action example** in `examples/github-action/seo-repair.yml`: audits on every
+  pull request and fails the check on a critical finding.
+- 1 new test (59 total).
+
 ## 1.0.2 - 2026-10-14
 
 The tool now runs without an agent, and two false positives found on the first real-site

@@ -114,6 +114,11 @@ python scripts/seo_repair.py audit ./my-site --fail-on high   # exit 1 if a high
 python scripts/seo_repair.py verify ./my-site --baseline seo-repair-out/findings.json
 ```
 
+To guard a site on every pull request, copy
+[`examples/github-action/seo-repair.yml`](examples/github-action/seo-repair.yml) to
+`.github/workflows/`. It fails the check when a critical finding is open and attaches
+the report and dashboard to the run.
+
 Output lands in `./seo-repair-out`: `findings.json`, `SEO-REPORT-<date>.md` and a
 self-contained `dashboard.html`. Applying fixes stays a Claude Code job, because each
 edit needs your approval.
@@ -181,7 +186,7 @@ Findings cite the offending string from your source, so every one is checkable.
 python tests/test_skill.py
 ```
 
-58 tests, no fixture files — each builds a throwaway site in a temp directory. They pin
+59 tests, no fixture files — each builds a throwaway site in a temp directory. They pin
 down calibration decisions made after real false positives: build-directory exclusion,
 deliberate `noindex`, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,
