@@ -11,6 +11,7 @@ import argparse
 import json
 import re
 from collections import defaultdict
+from urllib.parse import urlsplit
 
 import seolib as S
 
@@ -62,9 +63,13 @@ def is_utility(url):
 
 def path_of(url_or_path):
     if url_or_path and url_or_path.startswith("http"):
-        from urllib.parse import urlsplit
         return S.norm_path(urlsplit(url_or_path).path or "/")
     return S.norm_path(url_or_path)
+
+
+def same_origin(url, base):
+    a, b = urlsplit(url), urlsplit(base)
+    return (a.scheme, a.netloc.lower()) == (b.scheme, b.netloc.lower())
 
 
 def build_index(doc):
@@ -155,7 +160,7 @@ def audit(doc, vitals=None, schema_findings=None):
                                evidence=p["file"] or p["url"], recipe="canonical-add"))
             continue
         cpath = path_of(c)
-        if base and c.startswith("http") and not c.startswith(base):
+        if base and c.startswith("http") and not same_origin(c, base):
             out.append(finding("S1-CANONICAL-OFFSITE", 1, "critical",
                                "Canonical points to a different origin.", [p["url"]],
                                evidence=c, recipe="canonical-fix"))

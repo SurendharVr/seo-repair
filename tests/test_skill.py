@@ -252,6 +252,21 @@ class TestGrouping(Base):
         self.assertEqual(len(hits), 1)
         self.assertIn("Skipped to four", hits[0]["evidence"])
 
+    def _canonical_ids(self, canonical):
+        self.fx.write("index.html", page_html(
+            head_extra='<link rel="canonical" href="{0}">'.format(canonical)))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = "https://example.com"
+        return [f["id"] for f in audit.audit(doc)["findings"]]
+
+    def test_canonical_on_a_lookalike_domain_is_offsite(self):
+        """REGRESSION found by the v1.0.3 review: a string-prefix test let
+        https://example.community pass as https://example.com."""
+        self.assertIn("S1-CANONICAL-OFFSITE", self._canonical_ids("https://example.community/"))
+
+    def test_canonical_on_the_same_origin_is_not_offsite(self):
+        self.assertNotIn("S1-CANONICAL-OFFSITE", self._canonical_ids("https://example.com/"))
+
     def _cannibal_pairs(self):
         pairs = set()
         for f in self.fx.audit()["findings"]:
