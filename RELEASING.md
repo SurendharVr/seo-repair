@@ -96,9 +96,9 @@ A pushed tag does **not** create a GitHub Release; that is a separate step.
 that does not match `pyproject.toml` and then publishes through PyPI trusted publishing:
 no API token is stored in the repo. One-time setup before the first tag, on pypi.org:
 *Your projects -> Publishing -> Add a new pending publisher* with PyPI project name
-`sitemend`, owner `SurendharVr`, repository `seo-repair`, workflow `release.yml`,
-environment `pypi` (and create a `pypi`
-environment under the repo's Settings -> Environments). Until that exists the workflow
+`sitemend`, owner `SurendharVr`, repository `sitemend`, workflow `release.yml`,
+environment `pypi` (and create a `pypi` environment under the repo's Settings ->
+Environments). Until that exists the workflow
 fails at the upload step; nothing else is affected. After the first successful upload,
 add `pip install sitemend` to the README.
 
@@ -123,7 +123,7 @@ touched:
 
 ```bash
 mkdir /tmp/plugintest && cd /tmp/plugintest
-claude plugin marketplace add <owner>/seo-repair --scope project
+claude plugin marketplace add <owner>/sitemend --scope project
 claude plugin install seo-repair@seo-repair --scope project -y
 claude plugin details seo-repair@seo-repair
 ```

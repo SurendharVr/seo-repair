@@ -22,9 +22,9 @@ classifiers = [
 dependencies = ["beautifulsoup4>=4.9", "lxml>=4.6", "requests>=2.25"]
 
 [project.urls]
-Homepage = "https://github.com/SurendharVr/seo-repair"
-Issues = "https://github.com/SurendharVr/seo-repair/issues"
-Changelog = "https://github.com/SurendharVr/seo-repair/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/SurendharVr/sitemend"
+Issues = "https://github.com/SurendharVr/sitemend/issues"
+Changelog = "https://github.com/SurendharVr/sitemend/blob/main/CHANGELOG.md"
 
 [project.scripts]
 sitemend = "sitemend.seo_repair:main"

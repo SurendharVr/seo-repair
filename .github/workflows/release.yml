@@ -1,8 +1,8 @@
 name: release
 
 # Publishes to PyPI when a version tag is pushed. One-time setup on pypi.org
-# (Publishing -> add a pending publisher): owner SurendharVr, repo seo-repair,
-# workflow release.yml, environment pypi. No API token is stored anywhere.
+# (Publishing -> add a pending publisher): project sitemend, owner SurendharVr,
+# repo sitemend, workflow release.yml, environment pypi. No API token is stored anywhere.
 on:
   push:
     tags: ["v*"]
