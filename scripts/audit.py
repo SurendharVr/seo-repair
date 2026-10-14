@@ -310,8 +310,10 @@ def audit(doc, vitals=None, schema_findings=None):
                                recipe="mixed-content-fix"))
 
     # security headers: response headers exist only in an http crawl, and HSTS only means
-    # something on https, so a plain-http dev server is never nagged about them.
-    if doc["meta"].get("mode") == "http" and base.startswith("https://"):
+    # something on https. Judge the scheme that was actually crawled (meta.source), not
+    # base_url: that is inferred from the canonicals, so a local http dev server of an
+    # https site would be told to send a header it cannot send.
+    if doc["meta"].get("mode") == "http" and str(doc["meta"].get("source") or "").startswith("https://"):
         seen = [p for p in pages if p.get("status") == 200 and "security_headers" in p]
         gaps = []
         for hdr, label in (("strict-transport-security", "Strict-Transport-Security"),
