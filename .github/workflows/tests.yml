@@ -68,7 +68,7 @@ jobs:
   package:
     # The wheel is a second way to run the tool, so it gets its own proof: build it,
     # install it into a clean interpreter away from the source tree, and audit the demo
-    # site through the installed `seo-repair` command.
+    # site through the installed `sitemend` command.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +85,7 @@ jobs:
           python -m venv /tmp/venv
           /tmp/venv/bin/pip install dist/*.whl
           cd /tmp
-          /tmp/venv/bin/seo-repair audit "$GITHUB_WORKSPACE/examples/demo-site" --out /tmp/out
+          /tmp/venv/bin/sitemend audit "$GITHUB_WORKSPACE/examples/demo-site" --out /tmp/out
           test -s /tmp/out/dashboard.html
           test -s /tmp/out/findings.json
 

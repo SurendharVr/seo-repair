@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "seo-repair"
+name = "sitemend"
 # Keep in step with .claude-plugin/plugin.json and SKILL.md; tests/test_skill.py checks it.
 version = "1.2.1"
 description = "Technical SEO audit and repair: crawls a site folder or live URL, finds indexing, duplicate-content, link, hreflang and schema problems, and never invents a number it did not measure."
@@ -22,23 +22,23 @@ classifiers = [
 dependencies = ["beautifulsoup4>=4.9", "lxml>=4.6", "requests>=2.25"]
 
 [project.urls]
-Homepage = "https://github.com/SurendharVr/seo-repair"
-Issues = "https://github.com/SurendharVr/seo-repair/issues"
-Changelog = "https://github.com/SurendharVr/seo-repair/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/SurendharVr/sitemend"
+Issues = "https://github.com/SurendharVr/sitemend/issues"
+Changelog = "https://github.com/SurendharVr/sitemend/blob/main/CHANGELOG.md"
 
 [project.scripts]
-seo-repair = "seorepair.seo_repair:main"
+sitemend = "sitemend.seo_repair:main"
 
 # The skill keeps its flat scripts/ layout (SKILL.md runs them by path). For the wheel,
-# that directory is the `seorepair` package and assets/ rides along inside it, so
+# that directory is the `sitemend` package and assets/ rides along inside it, so
 # `seo_repair.py` finds its sibling scripts and the dashboard template exactly where the
 # source tree has them.
 [tool.setuptools]
-packages = ["seorepair", "seorepair.assets"]
+packages = ["sitemend", "sitemend.assets"]
 
 [tool.setuptools.package-dir]
-seorepair = "scripts"
-"seorepair.assets" = "assets"
+sitemend = "scripts"
+"sitemend.assets" = "assets"
 
 [tool.setuptools.package-data]
-"seorepair.assets" = ["dashboard.html"]
+"sitemend.assets" = ["dashboard.html"]

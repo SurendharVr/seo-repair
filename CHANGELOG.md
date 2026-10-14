@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **The PyPI package and command are now `sitemend`.** `pip install sitemend`, then
+  `sitemend audit <folder|URL>`; the wheel's import package is `sitemend`. Nothing was
+  ever published as `seo-repair`, so no install breaks. The Claude Code skill, plugin,
+  scripts and `SEO_REPAIR_*` variables keep their names.
+
 ## 1.2.1 - 2026-10-14
 
 Fixes from reviewing 1.2.0.
