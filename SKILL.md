@@ -1,7 +1,7 @@
 ---
 name: seo-repair
 description: "Crawl-driven SEO audit, repair planning, and implementation for a local site codebase or its dev server. Use when the user asks to audit, fix, or improve SEO; find indexing/crawl problems, orphan pages, duplicate content, keyword cannibalization, thin pages, broken internal links, missing or misleading schema, Core Web Vitals, or mobile usability; or to re-verify SEO after changes. Runs a real crawler and real Lighthouse, proposes every edit before applying it, and never invents search volume, keyword difficulty, or backlink data."
-version: 1.1.0
+version: 1.2.0
 ---
 
 # seo-repair
@@ -138,7 +138,7 @@ Run before and after changing anything in `scripts/`:
 python tests/test_skill.py
 ```
 
-96 tests (one is opt-in and runs real Lighthouse), no fixture files -- each builds a throwaway site in a temp directory. They
+134 tests (two are opt-in: real Lighthouse and real Chrome rendering), no fixture files -- each builds a throwaway site in a temp directory. They
 pin down calibration decisions made after real false positives (build-dir exclusion,
 deliberate noindex, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries). A failure means "was this behaviour meant to change",
@@ -158,7 +158,13 @@ not "make it pass".
   rather than admitted as pages, which is what keeps `S1-SITEMAP-ORPHAN` and
   `S1-BROKEN-LINK` meaningful. A page that is neither linked nor listed is unreachable
   over HTTP by construction — that is why fs is the default, and why Gate B reports
-  `NOT ASSESSED` rather than `CLEAR` here.
+  `NOT ASSESSED` rather than `CLEAR` here. Only http mode sees redirect chains and
+  response headers.
+  Add `--render` (needs a local Chrome/Chromium/Edge; `--render-limit` caps it at 50
+  pages, ~5 s each) to parse the post-JavaScript DOM instead of the raw HTML. It is the
+  only way to prove `S1-JS-DEPENDENT` and `S1-JS-HEAD-MISMATCH`; without it a
+  client-rendered page is only hinted at by `S1-JS-SHELL`. Say how many pages were
+  rendered (`meta.rendered_pages`) when reporting.
 
 ---
 

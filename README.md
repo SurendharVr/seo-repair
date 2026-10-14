@@ -92,7 +92,7 @@ from that:
 | **Structured data** | Required properties, if it checks at all | Required properties, and whether the markup claims things the page never shows, such as review authors |
 | **Applying fixes** | Suggestions | One approved batch at a time, then a re-crawl to confirm it worked. Nothing is edited without approval |
 | **In CI** | No | `--fail-on` sets the exit code. An example GitHub Action is in `examples/` |
-| **Tested** | Not testable | 85 tests, many pinned to false positives found on real runs |
+| **Tested** | Not testable | 134 tests, many pinned to false positives found on real runs |
 
 **How big is the gap?** We measured it on the demo site (5 pages, 14 planted defects).
 Three plain "audit this site" runs by an AI agent with read-only file access found 14, 12
@@ -114,8 +114,9 @@ what stops a page being crawled and indexed first, then decide what it should sa
 ## Works with
 
 - **Full workflow:** Claude Code (audit, plan, apply, verify).
-- **Standalone:** one command, `python scripts/seo_repair.py audit <folder|URL>`, runs
-  the whole pipeline on plain Python 3.8+. No agent needed. See below.
+- **Standalone:** one command, `seo-repair audit <folder|URL>` (or
+  `python scripts/seo_repair.py audit ...` from a clone), runs the whole pipeline on
+  plain Python 3.9+. No agent needed. See below.
 - **Tested on:** Linux, macOS and Windows. The Lighthouse step is verified on Windows only.
 
 ## Install
@@ -133,8 +134,19 @@ git clone https://github.com/SurendharVr/seo-repair ~/.claude/skills/seo-repair
 pip install -r ~/.claude/skills/seo-repair/requirements.txt
 ```
 
-Requires Python 3.8+ with `beautifulsoup4` and `lxml` (`requests` only for http-mode
-crawling). Core Web Vitals additionally need Node and a local Chrome, via
+**Or as a command-line tool, without Claude Code:**
+
+```bash
+pip install git+https://github.com/SurendharVr/seo-repair
+seo-repair audit ./my-site
+```
+
+(The wheel is built and tested in CI on every push. `pip install seo-repair` from PyPI
+works once a release has been published; see [`RELEASING.md`](RELEASING.md).)
+
+Requires Python 3.9+ with `beautifulsoup4`, `lxml` and `requests` (`pip` installs them;
+from a clone, `requirements.txt` lists them). Core Web Vitals and `--render` additionally
+need a local Chrome, Chromium or Edge; Core Web Vitals also need Node, via
 `npx lighthouse`.
 
 ## Use it without an agent
@@ -191,7 +203,7 @@ refuses without a named, approved batch.
 
 | Stage | Checks |
 | --- | --- |
-| **Crawling & indexing** | `robots.txt` rules, XML sitemap coverage and contradictions, `noindex` directives, canonical tags (missing, cross-page, broken, off-origin), placeholder domains (example.com, localhost) in canonicals and the sitemap, broken internal links, URL hygiene |
+| **Crawling & indexing** | `robots.txt` rules, XML sitemap coverage and contradictions, `noindex` directives, canonical tags (missing, cross-page, broken, off-origin), placeholder domains (example.com, localhost) in canonicals and the sitemap, broken internal links, URL hygiene, redirect chains and loops, mixed content, `hreflang` (invalid codes, broken targets, missing self and return tags), sitemap `<lastmod>` validity, response security headers, and client-rendered shells (`--render` compares raw HTML to the rendered DOM) |
 | **Site architecture** | Orphan pages, unreachable pages, click depth, internal link distribution, heading structure, breadcrumbs |
 | **Content & on-page** | Duplicate and near-duplicate content (MinHash), keyword cannibalization, thin content, title tags, meta descriptions, Open Graph tags, image alt text, oversized images, unused assets |
 | **Core Web Vitals** | Lighthouse LCP, CLS and TBT — reported as *lab* metrics, with the localhost caveat stated |
@@ -202,8 +214,16 @@ Findings cite the offending string from your source, so every one is checkable.
 
 ## Limitations, stated plainly
 
-- **Claude Code only** for the JS-rendering and mobile-overflow checks, which use the
-  built-in browser tools. The Python scripts run standalone anywhere.
+- **JS rendering is for live URLs.** `seo-repair audit https://... --render` parses
+  Chrome's post-JavaScript DOM with a local Chrome, Chromium or Edge, for up to 50 pages
+  (`--render-limit`, about 5 seconds each, one browser launch per page). A folder has no
+  running site to render, so fs mode only gets the static-shell hint `S1-JS-SHELL`. The
+  mobile-overflow check is still Claude Code only (it uses the built-in browser tools).
+  The render path is verified on Windows against real Chrome; the opt-in test is
+  `SEO_REPAIR_RENDER_TEST=1`.
+- **Redirect chains, response headers and rendering need an http crawl**, because a
+  folder on disk has none of them. Pagination (`rel=next/prev`) is not checked: Google
+  stopped using it.
 - **Core Web Vitals need local Chrome.** These are lab numbers from your machine, not
   field data. Real CWV comes from CrUX via Search Console, which is a handoff item.
 - **`vitals.py` is verified on Windows only.** CI runs the test suite on Linux, macOS
@@ -221,7 +241,7 @@ Findings cite the offending string from your source, so every one is checkable.
 python tests/test_skill.py
 ```
 
-96 tests (one is opt-in and runs real Lighthouse), no fixture files — each builds a throwaway site in a temp directory. They pin
+134 tests (two are opt-in: real Lighthouse and real Chrome rendering), no fixture files — each builds a throwaway site in a temp directory. They pin
 down calibration decisions made after real false positives: build-directory exclusion,
 deliberate `noindex`, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,

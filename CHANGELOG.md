@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.2.0 - 2026-10-14
+
+Closes the three biggest gaps found by comparing seo-repair with other SEO audit tools:
+rule coverage, JavaScript rendering outside Claude Code, and distribution.
+
+- **Fourteen new checks, all stage 1.** `S1-REDIRECT-CHAIN`, `S1-REDIRECT-LOOP`,
+  `S1-MIXED-CONTENT`, `S1-SECURITY-HEADERS`, `S1-SITEMAP-LASTMOD-INVALID`,
+  `S1-SITEMAP-LASTMOD-UNIFORM`, `S1-HREFLANG-INVALID`, `-BROKEN`, `-NO-SELF`, `-NO-RETURN`,
+  `S1-JS-SHELL`, `S1-JS-DEPENDENT`, `S1-JS-HEAD-MISMATCH`. Redirects and headers need an
+  http crawl and are silent in fs mode; security headers are only judged on an https
+  origin, so a local dev server is never nagged. Alternates on another origin are not
+  called broken: one crawl cannot see them. `rel=next/prev` is deliberately not checked
+  (Google stopped using it). The demo site is unchanged: 24 findings.
+- **`--render`: JavaScript rendering without Claude Code.** An http crawl can parse
+  Chrome's post-JavaScript DOM (`chrome --headless --dump-dom`, no Playwright or
+  Selenium) for up to `--render-limit` pages (default 50, ~5 s each). The raw HTML's word
+  count and head are kept so the two can be compared. Verified on Windows against real
+  Chrome; the opt-in test is `SEO_REPAIR_RENDER_TEST=1`.
+- **A client-rendered shell is no longer reported as missing its H1.** On an unrendered
+  page with an empty `#root`, the headings do not exist yet; `S1-JS-SHELL` says so instead.
+- **`seo-repair` is installable.** `pyproject.toml` builds a wheel that ships the scripts
+  and the dashboard template and installs a `seo-repair` command (`audit`, `verify`).
+  CI builds it, installs it into a clean venv and audits the demo site through it.
+  `.github/workflows/release.yml` publishes to PyPI on a `v*` tag via trusted publishing
+  (one-time setup on pypi.org, see `RELEASING.md`). **Not yet published**; install with
+  `pip install git+https://github.com/SurendharVr/seo-repair` until it is.
+- **Python 3.9+.** The README said 3.8, which CI never tested and which is end-of-life.
+- 38 new tests (134 total, two opt-in), including a threaded server that redirects
+  `/a -> /b -> /c`, loops, and sends response headers, and a version-agreement test across
+  `pyproject.toml`, `plugin.json` and `SKILL.md`.
+
 ## 1.1.0 - 2026-10-14
 
 Two new checks, found by comparing against a plain prompt that noticed both and seo-repair

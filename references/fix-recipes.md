@@ -52,6 +52,44 @@ Repoint to the correct URL, or remove the link. Check `detail.refs` for every so
 page; a broken link in a shared header or footer appears once as a finding but is one
 edit in one shared file.
 
+### `redirect-fix` — care
+Point every internal link, canonical and sitemap entry straight at the final URL, then
+collapse the chain so the first hop redirects directly to the last (one 301, not two).
+Never delete the old hops: they carry the signals earned by the old URLs. For a loop,
+find the two rules that undo each other (often a trailing-slash rule against a
+www/non-www rule) and fix the host config, not the pages.
+
+### `mixed-content-fix` — safe
+Change `http://` to `https://` on the evidence URLs. If the host does not serve https,
+self-host the file instead; a scheme-relative `//` URL is not a fix.
+
+### `security-headers-add` — care
+At the host, not in the page: `Strict-Transport-Security: max-age=31536000` and
+`X-Content-Type-Options: nosniff` (`_headers` on Netlify, `vercel.json`, `.htaccess`).
+Start HSTS with a short `max-age` and without `includeSubDomains`: it is hard to undo.
+
+### `lastmod-fix` — safe
+Use W3C dates (`2026-05-01` or `2026-05-01T10:00:00Z`). Set `lastmod` only to the date
+the page's content really changed. If you cannot know that, omit the field: a uniform or
+invented date teaches crawlers to ignore it. **Do not set them all to today.**
+
+### `hreflang-fix` — care
+Every language version lists every version, itself included, using the same set on each
+page, with absolute URLs:
+```html
+<link rel="alternate" hreflang="en" href="https://<origin>/en/">
+<link rel="alternate" hreflang="fr" href="https://<origin>/fr/">
+<link rel="alternate" hreflang="x-default" href="https://<origin>/en/">
+```
+Codes are `language[-Script][-REGION]` with a hyphen (`en-GB`, `zh-Hant-TW`). Fix a
+missing return tag on the page that is missing it, not by deleting the other side.
+
+### `js-render-fix` — care
+Put the content, `<title>`, canonical and robots directive in the server's HTML
+(server-side rendering or static generation) so every crawler sees the same page.
+Never change `noindex` or the canonical in JavaScript. If a rewrite is out of scope,
+say so in the report: a page that depends on JS is slower to index, not unindexable.
+
 ### `url-rename` / `url-normalize` — gated
 **The highest-risk fix in this skill.** A renamed URL loses everything it had earned
 unless a 301 redirect ships in the same batch. Required in the batch:

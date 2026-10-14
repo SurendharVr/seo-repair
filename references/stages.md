@@ -22,12 +22,31 @@ Reference for interpreting findings. Fixes live in `fix-recipes.md`.
 | `S1-BROKEN-LINK` | Internal link to a URL that doesn't exist | high |
 | `S1-URL-UNCLEAN` | Uppercase, underscores, or spaces in a URL | medium |
 | `S1-URL-MIXED-CONVENTION` | Site mixes `/page` and `/page.html` | medium, low confidence |
+| `S1-REDIRECT-CHAIN` | Two or more redirects in a row before a page resolves. http mode only — fs mode never sees a redirect | medium — each hop costs crawl budget and a little link equity |
+| `S1-REDIRECT-LOOP` | A URL redirects in a circle and never resolves | high |
+| `S1-MIXED-CONTENT` | `http://` subresources on an https page (https is read from the page's canonical or the base origin) | high when a script, stylesheet or iframe is involved (browsers block them), medium for images and media |
+| `S1-SECURITY-HEADERS` | `Strict-Transport-Security` or `X-Content-Type-Options` missing from responses. http mode on an https origin only, so a local dev server is never nagged | low |
+| `S1-SITEMAP-LASTMOD-INVALID` | A `<lastmod>` that is not a W3C date (`2026-05-01`, `2026-05-01T10:00:00Z`) | medium — a malformed date is ignored |
+| `S1-SITEMAP-LASTMOD-UNIFORM` | Five or more URLs, all with the same `<lastmod>` | low, medium confidence — crawlers learn to ignore a field that never varies |
+| `S1-HREFLANG-INVALID` | `hreflang` is not a valid language code (`en_GB` instead of `en-GB`) | medium |
+| `S1-HREFLANG-BROKEN` | An alternate names a page that does not exist. Alternates on another origin cannot be checked from one crawl and are skipped | high |
+| `S1-HREFLANG-NO-SELF` | The page's hreflang set does not include the page itself | medium |
+| `S1-HREFLANG-NO-RETURN` | Page A names B but B does not name A back (or has no hreflang at all); Google ignores a pair that is not reciprocal | high |
+| `S1-JS-SHELL` | The source HTML is an empty client-rendered shell (empty `#root`/`#app`/`#__next` and almost no text). A guess from static HTML; `--render` proves it. While it stands, the page is not also reported as missing an H1 | medium, medium confidence |
+| `S1-JS-DEPENDENT` | `--render` only: most of the page's text exists only after JavaScript runs (raw words vs rendered words in the evidence) | medium, medium confidence — Google renders eventually, most other crawlers do not |
+| `S1-JS-HEAD-MISMATCH` | `--render` only: the canonical or the `noindex` directive differs between raw HTML and the rendered DOM | high — two different answers to "may this be indexed, and as what" |
+
+Pagination (`rel=next/prev`) is deliberately not checked: Google stopped using it.
 
 **Deliberate exclusions.** A `noindex` on a 404, or on a page also disallowed in
 robots.txt, is a decision. Reported separately as a confirmation, never as a defect.
 Utility pages matched: `404`, `403`, `500`, `offline`, `thank-you`.
 
-**JS-rendered content** is checked outside the crawler — see `pipeline.md`.
+**JS-rendered content.** An http crawl with `--render` parses Chrome's post-JavaScript DOM
+(`chrome --headless --dump-dom`, no Playwright needed) for up to `--render-limit` pages
+(default 50, about 5 seconds each) and keeps the raw HTML's head and word count so the
+two can be compared. Status codes, redirects and headers still come from the plain
+request. Without `--render`, `S1-JS-SHELL` is the only hint.
 
 ---
 

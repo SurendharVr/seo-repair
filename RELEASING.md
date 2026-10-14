@@ -42,7 +42,8 @@ Must pass with **no warnings**. This is easy to skip and easy to regret — it c
 missing marketplace `description` before v1.0.0, which is the text users see when
 browsing marketplaces. Warnings here are user-facing defects, not lint noise.
 
-**4. Version numbers agree.** Bump `.claude-plugin/plugin.json` `version` and add a
+**4. Version numbers agree.** Bump `pyproject.toml`, `.claude-plugin/plugin.json` and the
+`SKILL.md` frontmatter `version` together (a test fails if they differ) and add a
 `CHANGELOG.md` entry, then:
 
 ```bash
@@ -86,6 +87,22 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <notes>
 ```
 
 A pushed tag does **not** create a GitHub Release; that is a separate step.
+
+**PyPI.** Pushing a `v*` tag runs `.github/workflows/release.yml`, which refuses a tag
+that does not match `pyproject.toml` and then publishes through PyPI trusted publishing:
+no API token is stored in the repo. One-time setup before the first tag, on pypi.org:
+*Your projects -> Publishing -> Add a new pending publisher* with owner `SurendharVr`,
+repository `seo-repair`, workflow `release.yml`, environment `pypi` (and create a `pypi`
+environment under the repo's Settings -> Environments). Until that exists the workflow
+fails at the upload step; nothing else is affected. After the first successful upload,
+add `pip install seo-repair` to the README.
+
+To check the wheel by hand without publishing anything:
+
+```bash
+python -m pip install build && python -m build
+python -m venv /tmp/v && /tmp/v/bin/pip install dist/*.whl && /tmp/v/bin/seo-repair --help
+```
 
 If your `gh` token lacks the `workflow` scope, pushing any change to
 `.github/workflows/` is rejected outright and the whole push fails —

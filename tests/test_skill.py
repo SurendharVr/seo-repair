@@ -78,7 +78,8 @@ class Fixture:
             "meta": {"source": self.root, "mode": "fs", "page_count": len(pages),
                      "base_url": None, "excluded_dirs_present": excluded},
             "robots": {"found": bool(robots), "sitemaps": rb.sitemaps, "groups": [], "raw": robots},
-            "sitemap": {"found": bool(sitemap), "urls": sm_urls, "notes": []},
+            "sitemap": {"found": bool(sitemap), "urls": sm_urls, "notes": [],
+                        "lastmods": S.parse_sitemap_lastmods(sitemap)},
             "assets": assets, "pages": pages, "extras": {},
             "referenced_assets": refs, "referenced_basenames": names,
         }
@@ -1079,6 +1080,430 @@ class TestOpenGraph(Base):
         self.fx.write("404.html", page_html())
         hits = [f for f in self.fx.audit()["findings"] if f["id"] == "S3-OG-MISSING"]
         self.assertEqual(hits, [], "noindex and 404 pages are never shared or indexed")
+
+
+def alt(*pairs):
+    return "".join('<link rel="alternate" hreflang="{0}" href="{1}">'.format(*p) for p in pairs)
+
+
+class TestHreflang(Base):
+    def _ids(self, en, fr, home=""):
+        self.fx.write("index.html", page_html(title="Home Page With An Adequate Title", head_extra=home))
+        self.fx.write("en/index.html", page_html(title="English Page With An Adequate Title", head_extra=en))
+        self.fx.write("fr/index.html", page_html(title="French Page With An Adequate Title", head_extra=fr))
+        return [(f["id"], tuple(f["pages"]), f["evidence"]) for f in self.fx.audit()["findings"]
+                if f["id"].startswith("S1-HREFLANG")]
+
+    def test_reciprocal_set_with_self_references_is_clean(self):
+        both = alt(("en", "/en/"), ("fr", "/fr/"), ("x-default", "/en/"))
+        self.assertEqual(self._ids(both, both), [])
+
+    def test_missing_return_tag_names_the_silent_page(self):
+        hits = self._ids(alt(("en", "/en/"), ("fr", "/fr/")), "")
+        self.assertEqual([h[:2] for h in hits], [("S1-HREFLANG-NO-RETURN", ("/en/",))])
+        self.assertIn("/fr/", hits[0][2])
+
+    def test_page_missing_from_its_own_set_is_flagged(self):
+        hits = self._ids(alt(("fr", "/fr/")), alt(("en", "/en/"), ("fr", "/fr/")))
+        self.assertIn(("S1-HREFLANG-NO-SELF", ("/en/",)), [h[:2] for h in hits])
+
+    def test_alternate_that_does_not_exist_is_broken(self):
+        hits = self._ids(alt(("en", "/en/"), ("de", "/de/")), "")
+        self.assertIn(("S1-HREFLANG-BROKEN", ("/en/",)), [h[:2] for h in hits])
+
+    def test_invalid_codes_flagged_valid_codes_are_not(self):
+        bad = self._ids(alt(("en_GB", "/en/")), "")
+        self.assertIn("S1-HREFLANG-INVALID", [h[0] for h in bad])
+        for code in ("en-GB", "x-default", "zh-Hant-TW", "es-419", "fil"):
+            self.assertTrue(audit.HREFLANG_RE.match(code), code)
+
+    def test_other_origin_alternates_are_not_checked(self):
+        """A cross-domain alternate cannot be verified from this crawl, so it is not 'broken'."""
+        self.fx.write("index.html", page_html(head_extra=alt(
+            ("en", "https://acme-widgets.com/"), ("fr", "https://acme-widgets.fr/"))))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = "https://acme-widgets.com"
+        ids = [f["id"] for f in audit.audit(doc)["findings"]]
+        self.assertNotIn("S1-HREFLANG-BROKEN", ids)
+
+
+class TestMixedContent(Base):
+    def _hit(self, body_extra="", canonical="https://acme-widgets.com/"):
+        head = '<link rel="canonical" href="{0}">'.format(canonical) if canonical else ""
+        self.fx.write("index.html", page_html(head_extra=head,
+                                              body="<h1>H</h1><p>" + "word " * 300 + "</p>" + body_extra))
+        return [f for f in self.fx.audit()["findings"] if f["id"] == "S1-MIXED-CONTENT"]
+
+    def test_http_image_on_https_page_is_medium(self):
+        hit = self._hit('<img src="http://cdn.test/a.png" alt="a" width="1" height="1">')
+        self.assertEqual([f["severity"] for f in hit], ["medium"])
+        self.assertIn("http://cdn.test/a.png", hit[0]["evidence"])
+
+    def test_http_script_is_high_because_browsers_block_it(self):
+        hit = self._hit('<script src="http://cdn.test/a.js"></script>')
+        self.assertEqual([f["severity"] for f in hit], ["high"])
+
+    def test_https_resources_are_fine(self):
+        self.assertEqual(self._hit('<script src="https://cdn.test/a.js"></script>'), [])
+
+    def test_an_http_page_cannot_have_mixed_content(self):
+        self.assertEqual(self._hit('<script src="http://cdn.test/a.js"></script>', canonical=None), [])
+
+
+class TestSitemapLastmod(Base):
+    def _ids(self, dates):
+        urls = "".join("<url><loc>https://acme-widgets.com/p{0}</loc>{1}</url>".format(
+            i, "<lastmod>{0}</lastmod>".format(d) if d else "") for i, d in enumerate(dates))
+        self.fx.write("index.html", page_html())
+        self.fx.write("sitemap.xml", '<?xml version="1.0"?><urlset xmlns='
+                      '"http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>")
+        return [f["id"] for f in self.fx.audit()["findings"] if "LASTMOD" in f["id"]]
+
+    def test_identical_dates_on_many_urls_are_flagged(self):
+        self.assertEqual(self._ids(["2026-01-01"] * 5), ["S1-SITEMAP-LASTMOD-UNIFORM"])
+
+    def test_few_urls_may_honestly_share_a_date(self):
+        self.assertEqual(self._ids(["2026-01-01"] * 4), [])
+
+    def test_distinct_valid_dates_are_clean(self):
+        self.assertEqual(self._ids(["2026-01-0%d" % i for i in range(1, 6)]), [])
+        self.assertEqual(self._ids(["2026-05-01T10:00:00Z", "2026-05-02T10:00:00+05:30"]), [])
+
+    def test_missing_lastmod_is_not_an_error(self):
+        self.assertEqual(self._ids([None] * 6), [])
+
+    def test_invalid_dates_are_flagged(self):
+        for bad in ("2026-13-45", "2026-05-01 10:00", "yesterday", "01/05/2026"):
+            self.assertEqual(self._ids(["2026-01-01", bad]), ["S1-SITEMAP-LASTMOD-INVALID"], bad)
+
+
+class TestSecurityHeaders(Base):
+    def _ids(self, base, headers, mode="http", source=None):
+        self.fx.write("index.html", page_html())
+        doc = self.fx.crawl()
+        doc["meta"].update(mode=mode, base_url=base, source=base if source is None else source)
+        for p in doc["pages"]:
+            p["status"] = 200
+            if headers is not None:
+                p["security_headers"] = headers
+        return [f for f in audit.audit(doc)["findings"] if f["id"] == "S1-SECURITY-HEADERS"]
+
+    def test_missing_headers_on_https_are_low(self):
+        hit = self._ids("https://acme-widgets.com", {})
+        self.assertEqual([f["severity"] for f in hit], ["low"])
+        self.assertIn("Strict-Transport-Security", hit[0]["evidence"])
+        self.assertIn("X-Content-Type-Options", hit[0]["evidence"])
+
+    def test_present_headers_are_clean(self):
+        self.assertEqual(self._ids("https://acme-widgets.com", {
+            "strict-transport-security": "max-age=1", "x-content-type-options": "nosniff"}), [])
+
+    def test_https_canonicals_on_a_plain_http_crawl_are_never_nagged(self):
+        """REGRESSION found by the PR #12 review: base_url is inferred from the canonicals,
+        so crawling a local http dev server of an https site reported 'HSTS missing' --
+        a header that cannot be sent over http, so the finding could never be fixed."""
+        self.assertEqual(self._ids("https://acme-widgets.com", {}, source="http://127.0.0.1:8000/"), [])
+
+    def test_plain_http_dev_server_is_never_nagged(self):
+        self.assertEqual(self._ids("http://127.0.0.1:8000", {}), [])
+
+    def test_fs_mode_and_old_crawls_say_nothing(self):
+        self.assertEqual(self._ids("https://acme-widgets.com", {}, mode="fs"), [])
+        self.assertEqual(self._ids("https://acme-widgets.com", None), [])
+
+
+class TestJsShellAndRenderedDiff(Base):
+    SHELL = '<div id="root"></div>'
+
+    def _ids(self, body, mutate=None):
+        self.fx.write("index.html", page_html(body=body))
+        doc = self.fx.crawl()
+        if mutate:
+            mutate(doc["pages"][0])
+        return {f["id"]: f for f in audit.audit(doc)["findings"] if f["id"].startswith("S1-JS")}
+
+    def test_empty_mount_point_is_flagged_as_a_shell(self):
+        self.assertIn("S1-JS-SHELL", self._ids(self.SHELL))
+
+    def test_a_shell_is_not_also_called_h1_less(self):
+        """Its headings only exist after JS runs; the shell finding is the honest one."""
+        self.fx.write("index.html", page_html(body=self.SHELL))
+        ids = [f["id"] for f in self.fx.audit()["findings"]]
+        self.assertIn("S1-JS-SHELL", ids)
+        self.assertNotIn("S2-H1-MISSING", ids)
+
+    def test_mount_point_with_server_rendered_text_is_not(self):
+        self.assertEqual(self._ids('<div id="root"><h1>Hi</h1><p>' + "word " * 80 + "</p></div>"), {})
+
+    def test_a_normal_page_is_not_a_shell(self):
+        self.assertEqual(self._ids("<h1>H</h1><p>" + "word " * 300 + "</p>"), {})
+
+    def _rendered(self, raw_words=5, canonical=None, robots=None, **page):
+        def m(p):
+            p.update(rendered=True, **page)
+            p["raw"] = {"words": raw_words, "title": p["title"], "canonical": canonical,
+                        "robots_meta": robots, "h1": 0}
+        return m
+
+    def test_text_that_only_exists_after_js_is_flagged(self):
+        ids = self._ids("<h1>H</h1><p>" + "word " * 300 + "</p>", self._rendered(raw_words=5))
+        self.assertIn("S1-JS-DEPENDENT", ids)
+        self.assertIn("raw HTML 5 words", ids["S1-JS-DEPENDENT"]["evidence"])
+
+    def test_server_rendered_text_is_not_js_dependent(self):
+        ids = self._ids("<h1>H</h1><p>" + "word " * 300 + "</p>", self._rendered(raw_words=300))
+        self.assertNotIn("S1-JS-DEPENDENT", ids)
+        self.assertNotIn("S1-JS-SHELL", ids)
+
+    def test_js_that_injects_noindex_or_a_canonical_is_high(self):
+        body = "<h1>H</h1><p>" + "word " * 300 + "</p>"
+        ids = self._ids(body, self._rendered(raw_words=300, noindex=True, robots_meta="noindex"))
+        self.assertEqual(ids["S1-JS-HEAD-MISMATCH"]["severity"], "high")
+        ids = self._ids(body, self._rendered(raw_words=300, canonical="https://acme-widgets.com/old"))
+        self.assertIn("canonical", ids["S1-JS-HEAD-MISMATCH"]["evidence"])
+
+
+class _JsServer:
+    """A site whose only page is an empty shell that JavaScript fills in."""
+
+    @classmethod
+    def start(cls):
+        import http.server
+        import threading
+        html = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+                '<meta name="viewport" content="width=device-width"><title>Shell</title></head>'
+                '<body><div id="root"></div><script>document.getElementById("root").innerHTML='
+                '"<h1>Rendered by JS</h1><p>" + "word ".repeat(150) + "</p>";</script></body></html>'
+                ).encode()
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                ok = self.path == "/"
+                body = html if ok else b"nope"
+                self.send_response(200 if ok else 404)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        return srv, "http://127.0.0.1:%d/" % srv.server_address[1]
+
+
+class TestRenderCrawl(unittest.TestCase):
+    """The plain crawl cannot see JS-built content and says so; --render shows it.
+    The Chrome half is opt-in (SEO_REPAIR_RENDER_TEST=1), like the Lighthouse test: CI
+    cannot be assumed to have a usable headless Chrome, and a skipped test is honest."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        cls.srv, cls.base = _JsServer.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def test_plain_crawl_sees_an_empty_shell(self):
+        page = crawl.crawl_http(self.base)[0][0]
+        self.assertTrue(page["js_shell"])
+        self.assertLess(page["full_word_count"], 5)     # just the <title>
+        self.assertNotIn("rendered", page)
+
+    @unittest.skipUnless(os.environ.get("SEO_REPAIR_RENDER_TEST") == "1" and S.find_chrome(),
+                         "set SEO_REPAIR_RENDER_TEST=1 (needs Chrome, Chromium or Edge)")
+    def test_render_crawl_sees_the_javascript_content(self):
+        page = crawl.crawl_http(self.base, render=True, render_limit=3)[0][0]
+        self.assertTrue(page["rendered"])
+        self.assertEqual(page["h1"], ["Rendered by JS"])
+        self.assertLess(page["raw"]["words"], 5)
+        self.assertGreaterEqual(page["full_word_count"], 150)
+        self.assertFalse(page["js_shell"])
+
+    def test_render_without_chrome_stops_with_a_clear_message(self):
+        real, S.find_chrome = S.find_chrome, lambda: None
+        self.addCleanup(setattr, S, "find_chrome", real)
+        with self.assertRaises(SystemExit) as cm:
+            crawl.crawl_http(self.base, render=True)
+        self.assertIn("Chrome", str(cm.exception))
+
+
+class TestHttpRedirectChains(unittest.TestCase):
+    """/a -> /b -> /c is two hops; /x -> /d is one and is fine; /loop1 <-> /loop2 never ends."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+        redirects = {"/a": "/b", "/b": "/c", "/x": "/d", "/loop1": "/loop2", "/loop2": "/loop1"}
+        home = page_html(title="Home Page With An Adequate Title", body=(
+            '<h1>H</h1><p><a href="/a">a</a> <a href="/x">x</a> <a href="/loop1">l</a> '
+            + "word " * 300 + "</p>"))
+        pages = {"/": home,
+                 "/c": page_html(title="Chain Target Page With A Fine Title"),
+                 "/d": page_html(title="Single Hop Target With A Fine Title")}
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path in redirects:
+                    self.send_response(301)
+                    self.send_header("Location", redirects[self.path])
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                body = pages.get(self.path, "nope").encode()
+                self.send_response(200 if self.path in pages else 404)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        cls.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        base = "http://127.0.0.1:%d/" % cls.srv.server_address[1]
+        cls.pages, _, _, _, _, _, skipped, _, _ = crawl.crawl_http(base)
+        for p in cls.pages:
+            p["robots_allowed"], p["robots_rule"] = True, None
+        doc = {"meta": {"source": base, "mode": "http", "page_count": len(cls.pages),
+                        "base_url": None, "excluded_dirs_present": [], "skipped": skipped},
+               "robots": {"found": False, "sitemaps": [], "groups": [], "raw": ""},
+               "sitemap": {"found": False, "urls": [], "notes": []},
+               "assets": [], "pages": cls.pages, "extras": {},
+               "referenced_assets": [], "referenced_basenames": []}
+        cls.findings = audit.audit(doc)["findings"]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def of(self, fid):
+        return [f for f in self.findings if f["id"] == fid]
+
+    def test_two_hop_chain_is_flagged_with_every_hop_in_the_evidence(self):
+        hit = self.of("S1-REDIRECT-CHAIN")
+        self.assertEqual([f["pages"] for f in hit], [["/c"]])
+        for hop in ("/a", "/b", "/c"):
+            self.assertIn(hop, hit[0]["evidence"])
+
+    def test_a_single_redirect_is_not_a_chain(self):
+        self.assertNotIn(["/d"], [f["pages"] for f in self.of("S1-REDIRECT-CHAIN")])
+
+    def test_redirect_loop_is_flagged_high(self):
+        hit = self.of("S1-REDIRECT-LOOP")
+        self.assertEqual([f["pages"] for f in hit], [["/loop1"]])
+        self.assertEqual(hit[0]["severity"], "high")
+
+    def test_response_security_headers_are_recorded(self):
+        home = next(p for p in self.pages if p["url"] == "/")
+        self.assertEqual(home["security_headers"], {"x-content-type-options": "nosniff"})
+
+
+class TestPackaging(unittest.TestCase):
+    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+
+    def _read(self, *parts):
+        with open(os.path.join(self.ROOT, *parts), encoding="utf-8") as f:
+            return f.read()
+
+    def test_every_manifest_carries_the_same_version(self):
+        """Three places name the version; releasing with one stale is how a PyPI upload
+        and a plugin tag end up disagreeing."""
+        import re
+        py = re.search(r'^version = "([^"]+)"', self._read("pyproject.toml"), re.M).group(1)
+        plugin = json.loads(self._read(".claude-plugin", "plugin.json"))["version"]
+        skill = re.search(r"^version: (\S+)", self._read("SKILL.md"), re.M).group(1)
+        self.assertEqual((py, plugin), (skill, skill))
+
+    def test_the_wheel_ships_every_script_and_the_dashboard_template(self):
+        """pyproject maps scripts/ and assets/ into the wheel by directory, so a new script
+        is picked up automatically -- but only if it is a module in scripts/."""
+        scripts = {f for f in os.listdir(os.path.join(self.ROOT, "scripts")) if f.endswith(".py")}
+        self.assertLessEqual({"seo_repair.py", "crawl.py", "audit.py", "report.py", "verify.py",
+                              "schema_check.py", "build_dashboard.py", "seolib.py", "__init__.py"},
+                             scripts)
+        self.assertTrue(os.path.isfile(os.path.join(self.ROOT, "assets", "dashboard.html")))
+
+    def test_dashboard_template_resolves_in_the_source_tree(self):
+        import build_dashboard
+        self.assertTrue(os.path.isfile(build_dashboard.TEMPLATE))
+
+
+class TestHttpRedirectChainOrder(unittest.TestCase):
+    """REGRESSION found by the PR #12 review: when the redirect target had already been
+    crawled directly, the chain leading to it was discarded and S1-REDIRECT-CHAIN never
+    fired. Home links to /c first, then to /a, and /a -> /b -> /c."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+        redirects = {"/a": "/b", "/b": "/c"}
+        pages = {"/": page_html(title="Home Page With An Adequate Title", body=(
+                     '<h1>H</h1><p><a href="/c">c</a> <a href="/a">a</a> ' + "word " * 300 + "</p>")),
+                 "/c": page_html(title="Chain Target Page With A Fine Title")}
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path in redirects:
+                    self.send_response(301)
+                    self.send_header("Location", redirects[self.path])
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                body = pages.get(self.path, "nope").encode()
+                self.send_response(200 if self.path in pages else 404)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        cls.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        base = "http://127.0.0.1:%d/" % cls.srv.server_address[1]
+        cls.pages, _, _, _, _, _, skipped, _, _ = crawl.crawl_http(base)
+        for p in cls.pages:
+            p["robots_allowed"], p["robots_rule"] = True, None
+        doc = {"meta": {"source": base, "mode": "http", "page_count": len(cls.pages),
+                        "base_url": None, "excluded_dirs_present": [], "skipped": skipped},
+               "robots": {"found": False, "sitemaps": [], "groups": [], "raw": ""},
+               "sitemap": {"found": False, "urls": [], "notes": []},
+               "assets": [], "pages": cls.pages, "extras": {},
+               "referenced_assets": [], "referenced_basenames": []}
+        cls.chains = [f for f in audit.audit(doc)["findings"] if f["id"] == "S1-REDIRECT-CHAIN"]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def test_chain_is_reported_even_though_the_target_was_crawled_first(self):
+        self.assertEqual([f["pages"] for f in self.chains], [["/c"]])
+        for hop in ("/a", "/b", "/c"):
+            self.assertIn(hop, self.chains[0]["evidence"])
 
 
 class TestVitalsCommand(unittest.TestCase):

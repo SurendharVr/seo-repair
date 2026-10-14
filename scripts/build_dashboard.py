@@ -10,8 +10,12 @@ import argparse
 import json
 import os
 
-TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "..", "assets", "dashboard.html")
+HERE = os.path.dirname(os.path.abspath(__file__))
+# In the source tree the template is ../assets; in an installed wheel it ships as the
+# `assets` subpackage next to this file.
+TEMPLATE = next((p for p in (os.path.join(HERE, "..", "assets", "dashboard.html"),
+                             os.path.join(HERE, "assets", "dashboard.html"))
+                 if os.path.isfile(p)), os.path.join(HERE, "..", "assets", "dashboard.html"))
 TOKEN = "/*__DATA__*/ null"
 
 
