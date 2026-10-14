@@ -429,6 +429,22 @@ class TestGates(Base):
 
 
 class TestReport(Base):
+    GATES = {"gates": [{"gate": "A", "name": "n", "rule": "r", "status": "CLEAR", "detail": "d"}]}
+
+    def test_report_states_how_many_pages_were_rendered(self):
+        """A rendered crawl that silently rendered 50 of 200 pages is a coverage claim the
+        reader cannot check; the honesty contract says to state it."""
+        meta = {"source": "https://x.test/", "page_count": 5, "mode": "http",
+                "render": True, "rendered_pages": 2, "render_limit": 2}
+        md = report.build_markdown({"meta": meta, "pages": []}, self.GATES, [], None, "x.test")
+        self.assertIn("2 of 5 pages", md)
+        self.assertIn("limit 2", md)
+
+    def test_plain_report_says_nothing_about_rendering(self):
+        meta = {"source": "https://x.test/", "page_count": 5, "mode": "http"}
+        md = report.build_markdown({"meta": meta, "pages": []}, self.GATES, [], None, "x.test")
+        self.assertNotIn("JavaScript rendering", md)
+
     def test_audit_records_whether_schema_was_checked(self):
         self.fx.write("index.html", page_html())
         doc = self.fx.crawl()
