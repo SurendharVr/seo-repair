@@ -1,7 +1,7 @@
 ---
 name: seo-repair
 description: "Crawl-driven SEO audit, repair planning, and implementation for a local site codebase or its dev server. Use when the user asks to audit, fix, or improve SEO; find indexing/crawl problems, orphan pages, duplicate content, keyword cannibalization, thin pages, broken internal links, missing or misleading schema, Core Web Vitals, or mobile usability; or to re-verify SEO after changes. Runs a real crawler and real Lighthouse, proposes every edit before applying it, and never invents search volume, keyword difficulty, or backlink data."
-version: 1.0.5
+version: 1.1.0
 ---
 
 # seo-repair
@@ -138,7 +138,7 @@ Run before and after changing anything in `scripts/`:
 python tests/test_skill.py
 ```
 
-85 tests (one is opt-in and runs real Lighthouse), no fixture files -- each builds a throwaway site in a temp directory. They
+96 tests (one is opt-in and runs real Lighthouse), no fixture files -- each builds a throwaway site in a temp directory. They
 pin down calibration decisions made after real false positives (build-dir exclusion,
 deliberate noindex, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries). A failure means "was this behaviour meant to change",

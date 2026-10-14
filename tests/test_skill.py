@@ -983,6 +983,104 @@ class TestHttpRedirectToCrawledTarget(TestHttpRedirects):
     CONTACT_LINKS = '<a href="/about">About</a>'
 
 
+class TestDashboardTemplate(unittest.TestCase):
+    """REGRESSION found while regenerating the README screenshot: gateClass() returned
+    'gate-block', the pill class was derived from it as 'block', and the stylesheet
+    defined '.pill.blocked', so the BLOCKED pill had no styling from v1.0.1 on."""
+
+    def test_every_gate_state_has_matching_pill_and_mark_styles(self):
+        import re
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets",
+                            "dashboard.html")
+        with open(path, encoding="utf-8") as f:
+            html = f.read()
+        body = re.search(r"const gateClass.*?;", html, re.S).group(0)
+        classes = re.findall(r'"(gate-[a-z]+)"', body)
+        self.assertEqual(len(set(classes)), 3, "expected blocked, clear and unassessed")
+        for cls in set(classes):
+            pill = cls.replace("gate-", "")        # how render() derives the pill class
+            self.assertIn(".pill." + pill + "{", html, "no pill style for " + cls)
+            self.assertIn("." + cls + " span{", html, "no mark style for " + cls)
+
+
+class TestPlaceholderDomain(Base):
+    """A site whose canonicals or sitemap point at example.com, localhost or similar tells
+    search engines to index a domain that is not its own. It was missed because the base
+    origin is inferred from those same URLs, so a uniformly wrong site looked consistent.
+    Found when a plain prompt noticed it and seo-repair did not."""
+
+    def _ids(self, canonical=None, sitemap_host=None, robots_sitemap=None):
+        extra = '<link rel="canonical" href="{0}">'.format(canonical) if canonical else ""
+        self.fx.write("index.html", page_html(head_extra=extra))
+        if sitemap_host:
+            self.fx.write("sitemap.xml",
+                          "<urlset><url><loc>https://{0}/</loc></url></urlset>".format(sitemap_host))
+        if robots_sitemap:
+            self.fx.write("robots.txt", "User-agent: *\nAllow: /\nSitemap: {0}\n".format(robots_sitemap))
+        return self.fx.audit()["findings"]
+
+    def _hit(self, findings):
+        return [f for f in findings if f["id"] == "S1-PLACEHOLDER-DOMAIN"]
+
+    def test_canonical_on_example_com_is_flagged(self):
+        hit = self._hit(self._ids(canonical="https://example.com/"))
+        self.assertEqual(len(hit), 1)
+        self.assertEqual(hit[0]["severity"], "high")
+        self.assertIn("canonical", hit[0]["evidence"])
+
+    def test_subdomain_of_a_reserved_name_is_flagged(self):
+        self.assertTrue(self._hit(self._ids(sitemap_host="demo.example.org")))
+
+    def test_localhost_in_robots_sitemap_line_is_flagged(self):
+        self.assertTrue(self._hit(self._ids(robots_sitemap="http://localhost:3000/sitemap.xml")))
+
+    def test_reserved_tld_is_flagged(self):
+        self.assertTrue(self._hit(self._ids(canonical="https://shop.test/")))
+
+    def test_a_real_domain_is_not_flagged(self):
+        self.assertEqual(self._hit(self._ids(canonical="https://www.vaavkitchenandcaterers.com/",
+                                             sitemap_host="www.vaavkitchenandcaterers.com")), [])
+
+    def test_lookalike_names_are_not_flagged(self):
+        """Suffix matching must be on whole labels: notexample.com and example.community
+        are not example.com."""
+        self.assertEqual(self._hit(self._ids(canonical="https://notexample.com/")), [])
+        self.assertEqual(self._hit(self._ids(sitemap_host="example.community")), [])
+
+
+class TestOpenGraph(Base):
+    def _og(self, head_extra="", **kw):
+        self.fx.write("index.html", page_html(head_extra=head_extra, **kw))
+        return [f for f in self.fx.audit()["findings"] if f["id"] == "S3-OG-MISSING"]
+
+    def test_page_with_no_open_graph_tags_is_flagged_low(self):
+        hit = self._og()
+        self.assertEqual(len(hit), 1)
+        self.assertEqual(hit[0]["severity"], "low")
+        for tag in ("og:title", "og:description", "og:image"):
+            self.assertIn(tag, hit[0]["evidence"])
+
+    def test_complete_open_graph_is_not_flagged(self):
+        og = ('<meta property="og:title" content="T"><meta property="og:description" content="D">'
+              '<meta property="og:image" content="https://x.test/i.png">')
+        self.assertEqual(self._og(head_extra=og), [])
+
+    def test_partial_open_graph_names_only_what_is_missing(self):
+        hit = self._og(head_extra='<meta property="og:title" content="T">')
+        self.assertEqual(len(hit), 1)
+        self.assertNotIn("og:title", hit[0]["evidence"])
+        self.assertIn("og:image", hit[0]["evidence"])
+
+    def test_noindex_and_utility_pages_are_not_flagged(self):
+        self.fx.write("index.html", page_html(
+            head_extra='<meta property="og:title" content="T"><meta property="og:description" '
+                       'content="D"><meta property="og:image" content="https://x.test/i.png">'))
+        self.fx.write("hidden.html", page_html(head_extra='<meta name="robots" content="noindex">'))
+        self.fx.write("404.html", page_html())
+        hits = [f for f in self.fx.audit()["findings"] if f["id"] == "S3-OG-MISSING"]
+        self.assertEqual(hits, [], "noindex and 404 pages are never shared or indexed")
+
+
 class TestVitalsCommand(unittest.TestCase):
     """REGRESSION found by the v1.0.3 review: on Windows the Lighthouse command ran
     with shell=True from a list, so cmd.exe saw an unquoted '&' in a page path and cut

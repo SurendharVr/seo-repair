@@ -18,13 +18,13 @@ python audit.py        --crawl /tmp/crawl.json --schema /tmp/schema.json --out /
 
 ## What it should find
 
-**22 findings — 1 critical, 6 high, 7 medium, 8 low**, and this gate state:
+**24 findings — 1 critical, 7 high, 7 medium, 9 low**, and this gate state:
 
 | Gate | Status | Why |
 | --- | --- | --- |
 | A — Index before content | CLEAR | every page is indexable |
 | B — Architecture before schema | BLOCKED | `/old-home.html` and `/reviews.html` are orphaned |
-| C — Everything before authority | BLOCKED | 7 critical/high findings open in stages 1–5 |
+| C — Everything before authority | BLOCKED | 8 critical/high findings open in stages 1–5 |
 
 Gate B blocking is the point of the demo: `/old-home.html` is a duplicate awaiting
 consolidation, so writing schema for it would be discarded along with the page.
@@ -47,6 +47,8 @@ consolidation, so writing schema for it would be discarded along with the page.
 | 12 | Heading jumps H1 → H3, plus an H5 footer | `/reviews.html` and site-wide | `S2-HEADING-SKIP` |
 | 13 | Review markup for a person the page never names | `/reviews.html` | `S5-SCHEMA-UNSUPPORTED-CLAIM` (high) |
 | 14 | 260 KB image referenced by nothing | `assets/unused-banner.jpg` | `S3-ASSET-UNUSED` |
+| 15 | Canonicals, sitemap and robots `Sitemap:` line all use `demo.example.com`, a reserved placeholder origin | site-wide | `S1-PLACEHOLDER-DOMAIN` (high) |
+| 16 | No `og:title`, `og:description` or `og:image` | every page | `S3-OG-MISSING` (low, one grouped finding) |
 
 ### What it should NOT report
 

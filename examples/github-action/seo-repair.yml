@@ -19,7 +19,7 @@ jobs:
       # Cloned outside the workspace so the audit does not crawl its own source.
       - name: Install seo-repair
         run: |
-          git clone --depth 1 --branch v1.0.5 https://github.com/SurendharVr/seo-repair "$RUNNER_TEMP/seo-repair"
+          git clone --depth 1 --branch v1.1.0 https://github.com/SurendharVr/seo-repair "$RUNNER_TEMP/seo-repair"
           pip install -r "$RUNNER_TEMP/seo-repair/requirements.txt"
 
       # Point the first argument at the folder that holds your site (. for the repo

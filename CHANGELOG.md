@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.0 - 2026-10-14
+
+Two new checks, found by comparing against a plain prompt that noticed both and seo-repair
+did not, and one dashboard bug found while regenerating the README screenshot.
+
+- **`S1-PLACEHOLDER-DOMAIN` (high).** Canonicals, `og:url`, sitemap URLs or the robots
+  `Sitemap:` line that use example.com/.org/.net, `localhost`, a reserved TLD (`.test`,
+  `.invalid`, ...) or a template name like `yourdomain.com`. The base origin is inferred
+  from those same URLs, so a site that was uniformly wrong looked consistent to every
+  canonical check. Matching is on whole labels: `notexample.com` is not flagged.
+- **`S3-OG-MISSING` (low).** An indexable page without `og:title`, `og:description` or
+  `og:image`; the evidence names the missing ones. Noindex and 404-style pages are skipped.
+- **The dashboard's BLOCKED pill had no styling since 1.0.1.** The class the script
+  produced (`pill block`) did not match the stylesheet (`.pill.blocked`), so gates showed
+  plain text instead of the red pill. A test now pins the class names. The README
+  screenshot is regenerated.
+- The demo site now reports 24 findings (1 critical, 7 high, 7 medium, 9 low): the two new
+  checks fire on it by design (`demo.example.com`, no Open Graph tags). `EXPECTED.md`, the
+  README output and the CI required-id list are updated. 11 new tests (96 total).
+
 ## 1.0.5 - 2026-10-14
 
 The last open finding from the 1.0.3 code review: `vitals.py` on Windows.

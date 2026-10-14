@@ -34,14 +34,14 @@ Auditing the bundled demo site — the gate lines are the point, and they say *w
 
 ```console
 $ python audit.py --crawl crawl.json --schema schema.json --out findings.json
-22 findings: 1 critical, 6 high, 7 medium, 8 low
-  stage 1: 4
+24 findings: 1 critical, 7 high, 7 medium, 9 low
+  stage 1: 5
   stage 2: 6
-  stage 3: 10
+  stage 3: 11
   stage 5: 2
   gate A (Index before content): CLEAR -- every crawled page is indexable
   gate B (Architecture before schema): BLOCKED -- 3 page(s) orphaned or pending consolidation: /, /old-home.html, /reviews.html
-  gate C (Everything before authority): BLOCKED -- 7 critical/high finding(s) open in stages 1-5: S1-CANONICAL-CROSS, S1-SITEMAP-ORPHAN, S2-ORPHAN, S2-UNREACHABLE
+  gate C (Everything before authority): BLOCKED -- 8 critical/high finding(s) open in stages 1-5: S1-CANONICAL-CROSS, S1-PLACEHOLDER-DOMAIN, S1-SITEMAP-ORPHAN, S2-ORPHAN
 ```
 
 Each run also produces a self-contained HTML dashboard:
@@ -191,9 +191,9 @@ refuses without a named, approved batch.
 
 | Stage | Checks |
 | --- | --- |
-| **Crawling & indexing** | `robots.txt` rules, XML sitemap coverage and contradictions, `noindex` directives, canonical tags (missing, cross-page, broken, off-origin), broken internal links, URL hygiene |
+| **Crawling & indexing** | `robots.txt` rules, XML sitemap coverage and contradictions, `noindex` directives, canonical tags (missing, cross-page, broken, off-origin), placeholder domains (example.com, localhost) in canonicals and the sitemap, broken internal links, URL hygiene |
 | **Site architecture** | Orphan pages, unreachable pages, click depth, internal link distribution, heading structure, breadcrumbs |
-| **Content & on-page** | Duplicate and near-duplicate content (MinHash), keyword cannibalization, thin content, title tags, meta descriptions, image alt text, oversized images, unused assets |
+| **Content & on-page** | Duplicate and near-duplicate content (MinHash), keyword cannibalization, thin content, title tags, meta descriptions, Open Graph tags, image alt text, oversized images, unused assets |
 | **Core Web Vitals** | Lighthouse LCP, CLS and TBT — reported as *lab* metrics, with the localhost caveat stated |
 | **Schema markup** | JSON-LD validity, required and recommended properties, and whether the markup's claims are corroborated by visible page text |
 | **Authority / off-page** | Advisory only. It cannot measure a backlink profile and does not pretend to — it produces a human action list, and refuses paid-link and PBN tactics outright |
@@ -221,7 +221,7 @@ Findings cite the offending string from your source, so every one is checkable.
 python tests/test_skill.py
 ```
 
-85 tests (one is opt-in and runs real Lighthouse), no fixture files — each builds a throwaway site in a temp directory. They pin
+96 tests (one is opt-in and runs real Lighthouse), no fixture files — each builds a throwaway site in a temp directory. They pin
 down calibration decisions made after real false positives: build-directory exclusion,
 deliberate `noindex`, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,
