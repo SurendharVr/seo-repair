@@ -220,7 +220,8 @@ Findings cite the offending string from your source, so every one is checkable.
   running site to render, so fs mode only gets the static-shell hint `S1-JS-SHELL`. The
   mobile-overflow check is still Claude Code only (it uses the built-in browser tools).
   The render path is verified on Windows against real Chrome; the opt-in test is
-  `SEO_REPAIR_RENDER_TEST=1`.
+  `SEO_REPAIR_RENDER_TEST=1`. Chrome runs with its sandbox on; as root, or in a container
+  where it will not start, set SEO_REPAIR_NO_SANDBOX=1.
 - **Redirect chains, response headers and rendering need an http crawl**, because a
   folder on disk has none of them. Pagination (`rel=next/prev`) is not checked: Google
   stopped using it.

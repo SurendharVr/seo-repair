@@ -1409,8 +1409,30 @@ class TestHttpRedirectChains(unittest.TestCase):
         self.assertEqual(home["security_headers"], {"x-content-type-options": "nosniff"})
 
 
+class TestChromeCommand(unittest.TestCase):
+    """--no-sandbox runs a site's JavaScript with Chrome's sandbox off, so it is only
+    added when Chrome would not start otherwise (root) or the user asks for it."""
+
+    def cmd(self, **kw):
+        return S.chrome_cmd("chrome", "http://x.test/", "/tmp/p", **kw)
+
+    def test_sandbox_stays_on_for_a_normal_posix_user(self):
+        self.assertNotIn("--no-sandbox", self.cmd(nt=False, root=False, env={}))
+
+    def test_root_needs_the_sandbox_off(self):
+        self.assertIn("--no-sandbox", self.cmd(nt=False, root=True, env={}))
+
+    def test_env_var_opts_in_explicitly(self):
+        self.assertIn("--no-sandbox",
+                      self.cmd(nt=False, root=False, env={"SEO_REPAIR_NO_SANDBOX": "1"}))
+
+    def test_windows_never_gets_the_flag(self):
+        self.assertNotIn("--no-sandbox",
+                         self.cmd(nt=True, root=True, env={"SEO_REPAIR_NO_SANDBOX": "1"}))
+
+
 class TestPackaging(unittest.TestCase):
-    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    ROOT =os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
     def _read(self, *parts):
         with open(os.path.join(self.ROOT, *parts), encoding="utf-8") as f:
