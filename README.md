@@ -174,7 +174,8 @@ Findings cite the offending string from your source, so every one is checkable.
   field data. Real CWV comes from CrUX via Search Console, which is a handoff item.
 - **`vitals.py` is verified on Windows only.** CI runs the test suite on Linux, macOS
   and Windows, but excludes Lighthouse because it needs a browser — so that one script's
-  cross-platform behaviour is untested rather than proven. Reports welcome.
+  cross-platform behaviour is untested rather than proven. Reports welcome. One opt-in
+  test (`SEO_REPAIR_LIGHTHOUSE_TEST=1`) runs real Lighthouse against a local server.
 - **Stage 6 does no off-page work.** By design.
 - **The unused-asset check recommends deletion**, so it is deliberately conservative: a
   filename appearing anywhere in any page's source counts as used. Verify before
@@ -186,7 +187,7 @@ Findings cite the offending string from your source, so every one is checkable.
 python tests/test_skill.py
 ```
 
-79 tests, no fixture files — each builds a throwaway site in a temp directory. They pin
+85 tests (one is opt-in and runs real Lighthouse), no fixture files — each builds a throwaway site in a temp directory. They pin
 down calibration decisions made after real false positives: build-directory exclusion,
 deliberate `noindex`, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,
