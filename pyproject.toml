@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sitemend"
 # Keep in step with .claude-plugin/plugin.json and SKILL.md; tests/test_skill.py checks it.
-version = "1.2.1"
+version = "1.3.0"
 description = "Technical SEO audit and repair: crawls a site folder or live URL, finds indexing, duplicate-content, link, hreflang and schema problems, and never invents a number it did not measure."
 readme = "README.md"
 license = "MIT"

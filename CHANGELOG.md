@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 - 2026-10-14
 
 **Renamed everywhere to `sitemend`.** 1.2.1 renamed only the PyPI package and command;
 this finishes the job. Breaking for anyone on the old names:
@@ -14,7 +14,8 @@ this finishes the job. Breaking for anyone on the old names:
 - **Default output folder:** `./sitemend-out`. An old `seo-repair-out/` is still skipped
   by the crawler and still git-ignored, so a leftover report is never audited or committed.
 - Crawler User-Agent is `sitemend-crawler/1.0`; the dashboard and report say sitemend.
-- The GitHub Action example installs `sitemend==1.2.1` from PyPI instead of cloning a tag.
+- The GitHub Action example installs `sitemend==1.3.0` from PyPI instead of cloning a tag.
+- PyPI keywords add `ai-seo` and `ai-agent`.
 
 ## 1.2.1 - 2026-10-14
 
