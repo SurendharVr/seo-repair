@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 import audit          # noqa: E402
 import crawl          # noqa: E402
+import report         # noqa: E402
 import schema_check   # noqa: E402
 import seo_repair     # noqa: E402
 import seolib as S    # noqa: E402
@@ -422,6 +423,32 @@ class TestGates(Base):
         self.fx.write("dupe.html", html)
         gate_c = [g for g in self.fx.audit()["gates"] if g["gate"] == "C"][0]
         self.assertEqual(gate_c["status"], "BLOCKED")
+
+
+class TestReport(Base):
+    def test_audit_records_whether_schema_was_checked(self):
+        self.fx.write("index.html", page_html())
+        doc = self.fx.crawl()
+        self.assertIs(audit.audit(doc, None, [])["schema_checked"], True)
+        self.assertIs(audit.audit(doc)["schema_checked"], False)
+
+    def test_clean_schema_run_counts_as_stage_5_assessed(self):
+        """REGRESSION found by the v1.0.3 review: a schema check that ran and found
+        nothing was reported 'not-measured'."""
+        self.assertTrue(report.stage5_ran({"meta": {"schema_checked": True}}, []))
+        self.assertFalse(report.stage5_ran({"meta": {}}, []))
+        self.assertTrue(report.stage5_ran({"meta": {}}, [{"stage": 5}]))
+
+    def test_rerun_block_uses_the_cli_for_both_modes(self):
+        """REGRESSION found by the v1.0.3 review: the block omitted schema_check and
+        passed a URL to crawl.py --root."""
+        crawl_doc = {"meta": {"source": "https://x.test/", "page_count": 0, "mode": "http"},
+                     "pages": []}
+        fdoc = {"gates": [{"gate": "A", "name": "n", "rule": "r", "status": "CLEAR",
+                           "detail": "d"}]}
+        md = report.build_markdown(crawl_doc, fdoc, [], None, "x.test")
+        self.assertIn('seo_repair.py audit "https://x.test/"', md)
+        self.assertNotIn("--root", md)
 
 
 # --------------------------------------------------------------- cli

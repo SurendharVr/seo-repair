@@ -512,6 +512,7 @@ def audit(doc, vitals=None, schema_findings=None):
     withheld = sorted(u for u, (ok, _) in indexable.items()
                       if not ok and u not in {i["url"] for i in intentional})
     return {"findings": out, "intentional": intentional,
+            "schema_checked": schema_findings is not None,
             "gates": compute_gates(out, withheld, doc["meta"].get("mode", "fs"))}
 
 
@@ -650,7 +651,8 @@ def main():
         stage_counts[f["stage"]] += 1
 
     S.jdump({
-        "meta": dict(doc["meta"], findings=len(findings)),
+        "meta": dict(doc["meta"], findings=len(findings),
+                      schema_checked=result["schema_checked"]),
         "summary": {"by_severity": dict(counts), "by_stage": dict(stage_counts)},
         "intentional_exclusions": intentional,
         "gates": result["gates"],
