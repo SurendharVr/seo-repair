@@ -1,15 +1,15 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 - 2026-10-14
+
+First release on PyPI, as `sitemend`.
 
 - **The PyPI package and command are now `sitemend`.** `pip install sitemend`, then
   `sitemend audit <folder|URL>`; the wheel's import package is `sitemend`. Nothing was
   ever published as `seo-repair`, so no install breaks. The Claude Code skill, plugin,
   scripts and `SEO_REPAIR_*` variables keep their names.
 
-## 1.2.1 - 2026-10-14
-
-Fixes from reviewing 1.2.0.
+Fixes from reviewing 1.2.0:
 
 - **Chrome keeps its sandbox on.** `--render` added `--no-sandbox` on every non-Windows
   OS. It is now added only when running as root, or with `SEO_REPAIR_NO_SANDBOX=1`.
