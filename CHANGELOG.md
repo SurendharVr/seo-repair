@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.4 - 2026-10-14
 
 Fixes from a code review of 1.0.3. Each has a regression test that failed before the fix.
 
