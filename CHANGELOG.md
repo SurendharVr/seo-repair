@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **`vitals.py` no longer mis-parses page paths on Windows.** Lighthouse was started
+  through `cmd.exe` with an unquoted URL, so `/search?q=a&lang=en` was measured as
+  `/search?q=a` and the rest of the command line (including `--output-path`) ran as a
+  second command. Arguments that `cmd.exe` would re-parse are now quoted; a double quote,
+  or a `%` that could start a `%VAR%` expansion, is refused with a clear error. Reproduced
+  and fixed against real Lighthouse and Chrome.
+- **A Lighthouse timeout now kills the whole process tree.** Only the shell was killed,
+  so node and Chrome kept running. The wait after the kill is bounded, so a survivor
+  cannot hang the audit.
+- 6 new tests (85 total): five unit tests, and one opt-in test that runs real Lighthouse
+  (`SEO_REPAIR_LIGHTHOUSE_TEST=1`; CI has no Chrome, so it is run by hand).
+
 ## 1.0.4 - 2026-10-14
 
 Fixes from a code review of 1.0.3. Each has a regression test that failed before the fix.

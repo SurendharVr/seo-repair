@@ -14,6 +14,7 @@ Run:  python tests/test_skill.py            (from the skill root)
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -27,6 +28,7 @@ import schema_check   # noqa: E402
 import seo_repair     # noqa: E402
 import seolib as S    # noqa: E402
 import verify as V    # noqa: E402
+import vitals          # noqa: E402
 
 
 def page_html(title="A Perfectly Reasonable Page Title Here",
@@ -979,6 +981,91 @@ class TestHttpRedirectToCrawledTarget(TestHttpRedirects):
 
     HOME_LINKS = '<a href="/about/">About</a> <a href="/contact/">Contact</a>'
     CONTACT_LINKS = '<a href="/about">About</a>'
+
+
+class TestVitalsCommand(unittest.TestCase):
+    """REGRESSION found by the v1.0.3 review: on Windows the Lighthouse command ran
+    with shell=True from a list, so cmd.exe saw an unquoted '&' in a page path and cut
+    the command there (`/?q=a&lang=en` was measured as `/?q=a`, and the rest, including
+    --output-path, was run as a separate command)."""
+
+    def test_url_with_cmd_metacharacters_is_quoted(self):
+        line = vitals._nt_cmdline(["npx", "lighthouse", "http://h/?q=a&lang=en", "--quiet"])
+        self.assertEqual(line, 'npx lighthouse "http://h/?q=a&lang=en" --quiet')
+
+    def test_arguments_with_spaces_are_quoted(self):
+        line = vitals._nt_cmdline(["x", "--chrome-flags=--headless=new --no-sandbox"])
+        self.assertEqual(line, 'x "--chrome-flags=--headless=new --no-sandbox"')
+
+    def test_percent_encoding_is_allowed_and_quoted(self):
+        self.assertEqual(vitals._nt_cmdline(["x", "http://h/a%20b"]), 'x "http://h/a%20b"')
+
+    def test_quote_and_variable_expansion_are_refused(self):
+        for bad in ('http://h/"&calc', "http://h/%PATH%", "http://h/%USERNAME%x"):
+            with self.assertRaises(ValueError):
+                vitals._nt_cmdline(["x", bad])
+
+    def test_timeout_kills_grandchildren_too(self):
+        """REGRESSION: the timeout used to kill only the shell, leaving node/Chrome
+        running. Here the child spawns a grandchild that ticks into a file; after the
+        timeout the ticking must stop."""
+        d = tempfile.mkdtemp(prefix="seo-repair-kill-")
+        self.addCleanup(shutil.rmtree, d, True)
+        tick = os.path.join(d, "tick.txt")
+        grand = os.path.join(d, "grand.py")
+        child = os.path.join(d, "child.py")
+        with open(grand, "w") as f:
+            f.write("import time\n"
+                    "while True:\n"
+                    "    open(%r, 'a').write('x')\n"
+                    "    time.sleep(0.2)\n" % tick)
+        with open(child, "w") as f:
+            f.write("import subprocess, sys, time\n"
+                    "subprocess.Popen([sys.executable, %r])\n"
+                    "time.sleep(60)\n" % grand)
+        import time
+        with self.assertRaises(subprocess.TimeoutExpired):
+            vitals.run_command([sys.executable, child], timeout=3)
+        before = os.path.getsize(tick)
+        time.sleep(1.2)
+        self.assertEqual(os.path.getsize(tick), before, "the grandchild is still running")
+
+
+@unittest.skipUnless(os.environ.get("SEO_REPAIR_LIGHTHOUSE_TEST") == "1",
+                     "set SEO_REPAIR_LIGHTHOUSE_TEST=1 (needs npx, Lighthouse and Chrome)")
+class TestVitalsLive(unittest.TestCase):
+    """Opt-in: runs real Lighthouse against a local server and checks the URL Chrome
+    actually requested. CI has no Chrome, so this is run by hand before touching vitals.py."""
+
+    def test_ampersand_in_page_path_reaches_the_server_intact(self):
+        import http.server
+        import threading
+        seen = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append(self.path)
+                body = (b"<!doctype html><html lang=en><head><meta charset=utf-8><title>t</title>"
+                        b"<meta name=viewport content='width=device-width'></head>"
+                        b"<body><h1>hi</h1></body></html>")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        wd = tempfile.mkdtemp(prefix="seo-repair-lh-test-")
+        self.addCleanup(shutil.rmtree, wd, True)
+        base = "http://127.0.0.1:%d" % srv.server_address[1]
+        res, err = vitals.run_one(base + "/?q=a&lang=en", "desktop", wd, timeout=150)
+        self.assertIsNone(err)
+        self.assertIn("/?q=a&lang=en", seen)
 
 
 if __name__ == "__main__":

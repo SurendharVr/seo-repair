@@ -15,7 +15,9 @@ Usage:
 import argparse
 import json
 import os
+import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -35,8 +37,59 @@ PROFILES = {
 }
 
 
+_CMD_META = re.compile(r"[\s&|<>^()%!]")
+_CMD_UNSAFE = re.compile(r'"|%(?![0-9A-Fa-f]{2})')
+
+
+def _nt_cmdline(args):
+    """One command line for cmd.exe, with every argument that cmd would re-parse quoted.
+
+    npx is a .cmd file on Windows, so it has to go through cmd.exe, which treats an
+    unquoted & | < > ^ as shell syntax. A page like /search?q=a&lang=en was measured as
+    /search?q=a and the rest of the line (including --output-path) ran as a second
+    command. Inside double quotes those characters are literal. A double quote, or a
+    % that could start a %VAR% expansion, would break out of the quoting, so those are
+    refused rather than escaped; %20-style percent-encoding is fine.
+    """
+    parts = []
+    for a in args:
+        if _CMD_UNSAFE.search(a):
+            raise ValueError("refusing to pass {0!r} through cmd.exe".format(a))
+        parts.append('"{0}"'.format(a) if _CMD_META.search(a) else a)
+    return " ".join(parts)
+
+
+def _kill_tree(proc):
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+    else:
+        os.killpg(proc.pid, signal.SIGKILL)
+
+
+def run_command(args, timeout):
+    """Run args and capture output. On timeout the WHOLE process tree is killed (the
+    shell alone is not enough: node and Chrome would keep running) and
+    subprocess.TimeoutExpired is raised."""
+    nt = os.name == "nt"
+    proc = subprocess.Popen(_nt_cmdline(args) if nt else args, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, encoding="utf-8", errors="replace",
+                            shell=nt, start_new_session=not nt)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        try:
+            proc.communicate(timeout=5)   # bounded: a survivor holding the pipes must not hang us
+        except subprocess.TimeoutExpired:
+            pass
+        raise
+    return subprocess.CompletedProcess(args, proc.returncode, out, err)
+
+
 def run_one(url, profile, workdir, timeout=180):
     """Run Lighthouse once. Returns (metrics_dict, error_or_None)."""
+    if not shutil.which("npx"):
+        return None, "npx/lighthouse not found on PATH"
     out_path = os.path.join(workdir, "lh-{0}.json".format(abs(hash((url, profile)))))
     cmd = [
         "npx", "--no-install", "lighthouse", url,
@@ -47,12 +100,13 @@ def run_one(url, profile, workdir, timeout=180):
     ] + PROFILES[profile]
 
     try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                       shell=(os.name == "nt"))
+        run_command(cmd, timeout)
     except subprocess.TimeoutExpired:
         return None, "lighthouse timed out after {0}s".format(timeout)
     except FileNotFoundError:
         return None, "npx/lighthouse not found on PATH"
+    except ValueError as e:
+        return None, str(e)
 
     # Exit code is unreliable on Windows (temp-profile cleanup EPERM). Trust the report.
     if not os.path.isfile(out_path):
