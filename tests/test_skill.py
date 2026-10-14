@@ -1143,6 +1143,29 @@ class TestHreflang(Base):
         self.assertIn(("S1-HREFLANG-BROKEN", ("/en/",)), [h[:2] for h in hits])
         self.assertIsNone(audit.hreflang_target("/about.html/", "/", {"/about.html": "/about.html"}, None)[1])
 
+    def _variants(self, en_head, us_head):
+        home = "<h1>Home</h1><p>" + "other " * 300 + "</p>"
+        # A distinct description keeps the home page out of the cannibalization check,
+        # so the assertions below are about the two alternates only.
+        self.fx.write("index.html", page_html(
+            title="Home Page With An Adequate Title", body=home,
+            desc="Welcome to the company front page, where you can find our latest news and contact details."))
+        self.fx.write("en/index.html", page_html(title="British English Page Title Here Ok", head_extra=en_head))
+        self.fx.write("us/index.html", page_html(title="American English Page Title Here Ok", head_extra=us_head))
+        return [f["id"] for f in self.fx.audit()["findings"]]
+
+    def test_reciprocal_regional_variants_are_not_duplicates(self):
+        """en-GB and en-US pages are meant to be near-identical; hreflang is how the site
+        says so, and reporting them as duplicates would tell the owner to merge them."""
+        both = alt(("en-GB", "/en/"), ("en-US", "/us/"))
+        ids = self._variants(both, both)
+        for dup in ("S3-DUPLICATE-EXACT", "S3-NEAR-DUPLICATE", "S3-CANNIBALIZATION"):
+            self.assertNotIn(dup, ids)
+
+    def test_identical_pages_without_a_return_tag_are_still_duplicates(self):
+        ids = self._variants(alt(("en-GB", "/en/"), ("en-US", "/us/")), "")
+        self.assertIn("S3-DUPLICATE-EXACT", ids)
+
 
 class TestMixedContent(Base):
     def _hit(self, body_extra="", canonical="https://acme-widgets.com/"):
