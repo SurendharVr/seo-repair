@@ -3,10 +3,13 @@
 [![tests](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml)
 [![license](https://img.shields.io/github/license/SurendharVr/seo-repair)](LICENSE)
 
-**Technical SEO audit and repair, as a [Claude Code](https://claude.com/claude-code)
-skill.**
+**Find the SEO problems Google actually penalises, then fix them in your code.**
 
-A site crawler and audit tool that finds indexing problems, orphan pages, duplicate
+Built for developers and site owners who keep their site in a codebase and want SEO
+fixes as reviewable diffs, not a PDF of warnings. You approve every change before it's
+applied.
+
+A [Claude Code](https://claude.com/claude-code) skill: a site crawler and audit tool that finds indexing problems, orphan pages, duplicate
 content, broken internal links, thin content, missing canonical tags, keyword
 cannibalization and invalid schema markup — then proposes the fixes, applies the ones
 you approve, and re-verifies with a second crawl.
@@ -73,6 +76,13 @@ rich-results policy violation and a manual-action risk, and a property-checker w
 never catch it.
 
 ---
+
+## Works with
+
+- **Full workflow:** Claude Code (audit, plan, apply, verify).
+- **Standalone:** the crawler, schema checker and audit scripts are plain Python 3.8+
+  and run anywhere.
+- **Tested on:** Linux, macOS and Windows. The Lighthouse step is verified on Windows only.
 
 ## Install
 
