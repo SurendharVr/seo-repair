@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.9"
 authors = [{ name = "surendhar-v" }]
 keywords = ["seo", "seo-audit", "technical-seo", "crawler", "sitemap", "structured-data",
-            "core-web-vitals", "lighthouse", "claude-code", "claude-skill"]
+            "core-web-vitals", "lighthouse", "claude-code", "claude-skill", "ai-seo", "ai-agent"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Internet :: WWW/HTTP :: Site Management",
