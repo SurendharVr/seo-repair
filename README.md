@@ -92,7 +92,7 @@ from that:
 | **Structured data** | Required properties, if it checks at all | Required properties, and whether the markup claims things the page never shows, such as review authors |
 | **Applying fixes** | Suggestions | One approved batch at a time, then a re-crawl to confirm it worked. Nothing is edited without approval |
 | **In CI** | No | `--fail-on` sets the exit code. An example GitHub Action is in `examples/` |
-| **Tested** | Not testable | 134 tests, many pinned to false positives found on real runs |
+| **Tested** | Not testable | 146 tests, many pinned to false positives found on real runs |
 
 **How big is the gap?** We measured it on the demo site (5 pages, 14 planted defects).
 Three plain "audit this site" runs by an AI agent with read-only file access found 14, 12
@@ -219,8 +219,9 @@ Findings cite the offending string from your source, so every one is checkable.
   (`--render-limit`, about 5 seconds each, one browser launch per page). A folder has no
   running site to render, so fs mode only gets the static-shell hint `S1-JS-SHELL`. The
   mobile-overflow check is still Claude Code only (it uses the built-in browser tools).
-  The render path is verified on Windows against real Chrome; the opt-in test is
-  `SEO_REPAIR_RENDER_TEST=1`.
+  The render path is verified against real Chrome on Windows, and in CI on Ubuntu; the
+  opt-in test is `SEO_REPAIR_RENDER_TEST=1`. Chrome runs with its sandbox on; as root, or in a container
+  where it will not start, set SEO_REPAIR_NO_SANDBOX=1.
 - **Redirect chains, response headers and rendering need an http crawl**, because a
   folder on disk has none of them. Pagination (`rel=next/prev`) is not checked: Google
   stopped using it.
@@ -241,7 +242,7 @@ Findings cite the offending string from your source, so every one is checkable.
 python tests/test_skill.py
 ```
 
-134 tests (two are opt-in: real Lighthouse and real Chrome rendering), no fixture files — each builds a throwaway site in a temp directory. They pin
+146 tests (two are opt-in: real Lighthouse and real Chrome rendering), no fixture files — each builds a throwaway site in a temp directory. They pin
 down calibration decisions made after real false positives: build-directory exclusion,
 deliberate `noindex`, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,

@@ -118,6 +118,14 @@ def build_markdown(crawl, fdoc, findings, vitals, site_name):
     A("**Generated** {0} · **Source** `{1}` · **Pages crawled** {2} · **Mode** {3}".format(
         today, m["source"], m["page_count"], m["mode"]))
     A("")
+    if m.get("render"):
+        rendered = m.get("rendered_pages", 0)
+        failed = sum(1 for p in crawl.get("pages", []) if p.get("render_error"))
+        A("**JavaScript rendering** {0} of {1} pages were parsed from Chrome's post-JavaScript DOM "
+          "(limit {2}); the other {3} use the raw HTML{4}.".format(
+              rendered, m["page_count"], m.get("render_limit"), m["page_count"] - rendered,
+              ", {0} of them because the render failed".format(failed) if failed else ""))
+        A("")
     A("> Every statement below is tagged **MEASURED** (observed directly), **INFERRED** "
       "(reasoned from observation), or **HANDOFF** (not observable here). No search "
       "volume, keyword difficulty, backlink, or field-CWV figure appears in this report, "

@@ -604,6 +604,8 @@ def main():
             "base_url": base_url,
             "crawled_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "page_count": len(pages),
+            "render": args.render,
+            "render_limit": args.render_limit if args.render else None,
             "rendered_pages": sum(1 for p in pages if p.get("rendered")),
             "excluded_dirs_present": excluded,
             "skipped": skipped,

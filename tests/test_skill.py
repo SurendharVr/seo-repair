@@ -429,6 +429,22 @@ class TestGates(Base):
 
 
 class TestReport(Base):
+    GATES = {"gates": [{"gate": "A", "name": "n", "rule": "r", "status": "CLEAR", "detail": "d"}]}
+
+    def test_report_states_how_many_pages_were_rendered(self):
+        """A rendered crawl that silently rendered 50 of 200 pages is a coverage claim the
+        reader cannot check; the honesty contract says to state it."""
+        meta = {"source": "https://x.test/", "page_count": 5, "mode": "http",
+                "render": True, "rendered_pages": 2, "render_limit": 2}
+        md = report.build_markdown({"meta": meta, "pages": []}, self.GATES, [], None, "x.test")
+        self.assertIn("2 of 5 pages", md)
+        self.assertIn("limit 2", md)
+
+    def test_plain_report_says_nothing_about_rendering(self):
+        meta = {"source": "https://x.test/", "page_count": 5, "mode": "http"}
+        md = report.build_markdown({"meta": meta, "pages": []}, self.GATES, [], None, "x.test")
+        self.assertNotIn("JavaScript rendering", md)
+
     def test_audit_records_whether_schema_was_checked(self):
         self.fx.write("index.html", page_html())
         doc = self.fx.crawl()
@@ -1126,6 +1142,46 @@ class TestHreflang(Base):
         ids = [f["id"] for f in audit.audit(doc)["findings"]]
         self.assertNotIn("S1-HREFLANG-BROKEN", ids)
 
+    def test_slashless_href_resolves_against_an_http_mode_alias_set(self):
+        """An http crawl records a directory page as {/en/, /en/index.html}, with no
+        slash-less alias, so /en used to be reported as a page that does not exist.
+        (fs crawls already alias /en, which is why this is not a Fixture test.)"""
+        alias = {"/en/": "/en/", "/en/index.html": "/en/"}
+        self.assertEqual(audit.hreflang_target("/en", "/", alias, None), ("internal", "/en/"))
+        self.assertEqual(audit.hreflang_target("https://acme-widgets.com/en", "/", alias, None),
+                         ("internal", "/en/"))
+        self.assertEqual(audit.hreflang_target("/en/", "/", {"/en": "/en"}, None), ("internal", "/en"))
+
+    def test_wrong_case_and_file_paths_stay_broken(self):
+        """Guard: the tolerance is for directory slashes only. Paths are case-sensitive
+        and /about.html is not /about.html/."""
+        hits = self._ids(alt(("en", "/en/"), ("fr", "/FR/")), alt(("fr", "/fr/"), ("en", "/en/")))
+        self.assertIn(("S1-HREFLANG-BROKEN", ("/en/",)), [h[:2] for h in hits])
+        self.assertIsNone(audit.hreflang_target("/about.html/", "/", {"/about.html": "/about.html"}, None)[1])
+
+    def _variants(self, en_head, us_head):
+        home = "<h1>Home</h1><p>" + "other " * 300 + "</p>"
+        # A distinct description keeps the home page out of the cannibalization check,
+        # so the assertions below are about the two alternates only.
+        self.fx.write("index.html", page_html(
+            title="Home Page With An Adequate Title", body=home,
+            desc="Welcome to the company front page, where you can find our latest news and contact details."))
+        self.fx.write("en/index.html", page_html(title="British English Page Title Here Ok", head_extra=en_head))
+        self.fx.write("us/index.html", page_html(title="American English Page Title Here Ok", head_extra=us_head))
+        return [f["id"] for f in self.fx.audit()["findings"]]
+
+    def test_reciprocal_regional_variants_are_not_duplicates(self):
+        """en-GB and en-US pages are meant to be near-identical; hreflang is how the site
+        says so, and reporting them as duplicates would tell the owner to merge them."""
+        both = alt(("en-GB", "/en/"), ("en-US", "/us/"))
+        ids = self._variants(both, both)
+        for dup in ("S3-DUPLICATE-EXACT", "S3-NEAR-DUPLICATE", "S3-CANNIBALIZATION"):
+            self.assertNotIn(dup, ids)
+
+    def test_identical_pages_without_a_return_tag_are_still_duplicates(self):
+        ids = self._variants(alt(("en-GB", "/en/"), ("en-US", "/us/")), "")
+        self.assertIn("S3-DUPLICATE-EXACT", ids)
+
 
 class TestMixedContent(Base):
     def _hit(self, body_extra="", canonical="https://acme-widgets.com/"):
@@ -1415,6 +1471,47 @@ class TestHttpRedirectChains(unittest.TestCase):
         self.assertEqual(home["security_headers"], {"x-content-type-options": "nosniff"})
 
 
+class TestChromeCommand(unittest.TestCase):
+    """--no-sandbox runs a site's JavaScript with Chrome's sandbox off, so it is only
+    added when Chrome would not start otherwise (root) or the user asks for it."""
+
+    def cmd(self, **kw):
+        return S.chrome_cmd("chrome", "http://x.test/", "/tmp/p", **kw)
+
+    def test_sandbox_stays_on_for_a_normal_posix_user(self):
+        self.assertNotIn("--no-sandbox", self.cmd(nt=False, root=False, env={}))
+
+    def test_root_needs_the_sandbox_off(self):
+        self.assertIn("--no-sandbox", self.cmd(nt=False, root=True, env={}))
+
+    def test_env_var_opts_in_explicitly(self):
+        self.assertIn("--no-sandbox",
+                      self.cmd(nt=False, root=False, env={"SEO_REPAIR_NO_SANDBOX": "1"}))
+
+    def test_windows_never_gets_the_flag(self):
+        self.assertNotIn("--no-sandbox",
+                         self.cmd(nt=True, root=True, env={"SEO_REPAIR_NO_SANDBOX": "1"}))
+
+
+class TestIntlDemoSite(unittest.TestCase):
+    """End-to-end guard for the v1.2.0 rules: crawl the fixture on disk through the real
+    CLI path and require exactly the planted findings, so a rule that stops firing, or
+    starts firing on clean pages, fails here."""
+
+    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples", "demo-site-intl")
+
+    def test_planted_defects_are_found_and_nothing_else_leaks(self):
+        out = os.path.join(tempfile.mkdtemp(prefix="seo-repair-intl-"), "o")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        findings = seo_repair.audit(self.ROOT, out, 200, None)
+        with open(findings, encoding="utf-8") as f:
+            ids = sorted(x["id"] for x in json.load(f)["findings"])
+        self.assertEqual(ids, sorted([
+            "S1-HREFLANG-BROKEN", "S1-HREFLANG-INVALID", "S1-HREFLANG-NO-RETURN",
+            "S1-JS-SHELL", "S1-MIXED-CONTENT", "S1-SITEMAP-LASTMOD-INVALID",
+            "S2-BREADCRUMB-MISSING", "S3-THIN", "S3-THIN", "S3-THIN", "S3-THIN"]))
+
+
 class TestPackaging(unittest.TestCase):
     ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -1443,6 +1540,15 @@ class TestPackaging(unittest.TestCase):
     def test_dashboard_template_resolves_in_the_source_tree(self):
         import build_dashboard
         self.assertTrue(os.path.isfile(build_dashboard.TEMPLATE))
+
+    def test_license_metadata_is_not_the_deprecated_form(self):
+        """setuptools drops the table form of `license` and license classifiers on
+        2027-02-18. SPDX string + setuptools>=77 is the supported spelling."""
+        text = self._read("pyproject.toml")
+        self.assertIn('license = "MIT"', text)
+        self.assertNotIn("license = {", text)
+        self.assertNotIn("License ::", text)
+        self.assertIn("setuptools>=77", text)
 
 
 class TestHttpRedirectChainOrder(unittest.TestCase):

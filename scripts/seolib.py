@@ -301,6 +301,21 @@ def find_chrome():
     return next((p for p in CHROME_PATHS if os.path.isfile(p)), None)
 
 
+def chrome_cmd(chrome, url, profile, nt=None, root=None, env=None):
+    """The headless-Chrome command line. --no-sandbox runs the audited site's JavaScript
+    without Chrome's sandbox, so it is added only for root (Chrome refuses to start as
+    root otherwise) or when SEO_REPAIR_NO_SANDBOX=1 (containers, some CI images).
+    nt/root/env are parameters so tests need no particular OS."""
+    nt = os.name == "nt" if nt is None else nt
+    env = os.environ if env is None else env
+    root = (not nt and os.geteuid() == 0) if root is None else root
+    cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
+           "--user-data-dir=" + profile, "--virtual-time-budget=8000", "--dump-dom", url]
+    if not nt and (root or env.get("SEO_REPAIR_NO_SANDBOX") == "1"):
+        cmd.insert(1, "--no-sandbox")
+    return cmd
+
+
 def render_dom(chrome, url, timeout=30):
     """The DOM after JavaScript has run, via `chrome --headless --dump-dom`.
 
@@ -311,10 +326,7 @@ def render_dom(chrome, url, timeout=30):
     """
     profile = tempfile.mkdtemp(prefix="seo-repair-chrome-")
     nt = os.name == "nt"
-    cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
-           "--user-data-dir=" + profile, "--virtual-time-budget=8000", "--dump-dom", url]
-    if not nt:
-        cmd.insert(1, "--no-sandbox")
+    cmd = chrome_cmd(chrome, url, profile)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             start_new_session=not nt)
     try:

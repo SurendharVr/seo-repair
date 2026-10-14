@@ -1,20 +1,20 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "seo-repair"
 # Keep in step with .claude-plugin/plugin.json and SKILL.md; tests/test_skill.py checks it.
-version = "1.2.0"
+version = "1.2.1"
 description = "Technical SEO audit and repair: crawls a site folder or live URL, finds indexing, duplicate-content, link, hreflang and schema problems, and never invents a number it did not measure."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 authors = [{ name = "surendhar-v" }]
 keywords = ["seo", "seo-audit", "technical-seo", "crawler", "sitemap", "structured-data",
             "core-web-vitals", "lighthouse", "claude-code", "claude-skill"]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Topic :: Internet :: WWW/HTTP :: Site Management",
     "Environment :: Console",

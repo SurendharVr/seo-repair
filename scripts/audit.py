@@ -9,6 +9,7 @@ Usage:
 """
 import argparse
 import datetime
+import itertools
 import json
 import re
 from collections import defaultdict
@@ -121,7 +122,13 @@ def hreflang_target(href, page_url, alias, base):
     if kind not in ("internal", "absolute"):
         return "internal", None
     path = path_of(href) if kind == "absolute" else resolved
-    return "internal", alias.get(S.norm_path(path))
+    key = S.norm_path(path)
+    found = alias.get(key)
+    if found is None and "." not in key.rstrip("/").rsplit("/", 1)[-1]:
+        # ponytail: /en and /en/ are one page behind a redirect. Google wants the final URL
+        # in hreflang and this does not flag the redirecting form; add a low finding if it matters.
+        found = alias.get(key[:-1] if key.endswith("/") else key + "/")
+    return "internal", found
 
 
 def same_origin(url, base):
@@ -514,13 +521,18 @@ def audit(doc, vitals=None, schema_findings=None):
     for p in live:
         if p["word_count"] > 0:
             by_fp[p["text_fingerprint"]].append(p["url"])
+    # Pages that name each other in hreflang are alternates of one page, not duplicates.
+    alt_pairs = {frozenset((u, t)) for u, ts in h_targets.items()
+                 for t in ts if t != u and u in h_targets.get(t, ())}
     for fp, urls in by_fp.items():
         if len(urls) > 1:
+            if all(frozenset(pair) in alt_pairs for pair in itertools.combinations(urls, 2)):
+                continue
             out.append(finding("S3-DUPLICATE-EXACT", 3, "critical",
                                "{0} pages have byte-identical main content.".format(len(urls)),
                                sorted(urls), evidence="identical text fingerprint " + fp[:12],
                                recipe="consolidate-pages"))
-    seen_pairs = {frozenset(u) for u in by_fp.values() if len(u) > 1}
+    seen_pairs = {frozenset(u) for u in by_fp.values() if len(u) > 1} | alt_pairs
     for i, a in enumerate(live):
         for b in live[i + 1:]:
             if frozenset((a["url"], b["url"])) in seen_pairs:
