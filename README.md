@@ -1,4 +1,4 @@
-# seo-repair
+# sitemend
 
 [![tests](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SurendharVr/seo-repair/actions/workflows/tests.yml)
 [![license](https://img.shields.io/github/license/SurendharVr/seo-repair)](LICENSE)
@@ -13,6 +13,9 @@ A [Claude Code](https://claude.com/claude-code) skill: a site crawler and audit 
 content, broken internal links, thin content, missing canonical tags, keyword
 cannibalization and invalid schema markup — then proposes the fixes, applies the ones
 you approve, and re-verifies with a second crawl.
+
+`sitemend` is the PyPI package and command-line name. Inside Claude Code the skill and
+plugin are still called `seo-repair`.
 
 What makes it different from a checklist: **the order is enforced.** SEO findings are
 not independent, so this treats them as a repair system with a dependency order.
@@ -114,7 +117,7 @@ what stops a page being crawled and indexed first, then decide what it should sa
 ## Works with
 
 - **Full workflow:** Claude Code (audit, plan, apply, verify).
-- **Standalone:** one command, `seo-repair audit <folder|URL>` (or
+- **Standalone:** one command, `sitemend audit <folder|URL>` (or
   `python scripts/seo_repair.py audit ...` from a clone), runs the whole pipeline on
   plain Python 3.9+. No agent needed. See below.
 - **Tested on:** Linux, macOS and Windows. The Lighthouse step is verified on Windows only.
@@ -138,10 +141,10 @@ pip install -r ~/.claude/skills/seo-repair/requirements.txt
 
 ```bash
 pip install git+https://github.com/SurendharVr/seo-repair
-seo-repair audit ./my-site
+sitemend audit ./my-site
 ```
 
-(The wheel is built and tested in CI on every push. `pip install seo-repair` from PyPI
+(The wheel is built and tested in CI on every push. `pip install sitemend` from PyPI
 works once a release has been published; see [`RELEASING.md`](RELEASING.md).)
 
 Requires Python 3.9+ with `beautifulsoup4`, `lxml` and `requests` (`pip` installs them;
