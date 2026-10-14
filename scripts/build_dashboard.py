@@ -49,8 +49,8 @@ def main():
     if site:
         safe = (site.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                     .encode("ascii", "xmlcharrefreplace").decode("ascii"))
-        html = html.replace("<title>SEO Repair Dashboard</title>",
-                            "<title>{0} SEO Repair</title>".format(safe), 1)
+        html = html.replace("<title>sitemend Dashboard</title>",
+                            "<title>{0} &#8212; sitemend</title>".format(safe), 1)
 
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(html)

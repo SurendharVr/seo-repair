@@ -1,10 +1,10 @@
 ---
-name: seo-repair
+name: sitemend
 description: "Crawl-driven SEO audit, repair planning, and implementation for a local site codebase or its dev server. Use when the user asks to audit, fix, or improve SEO; find indexing/crawl problems, orphan pages, duplicate content, keyword cannibalization, thin pages, broken internal links, missing or misleading schema, Core Web Vitals, or mobile usability; or to re-verify SEO after changes. Runs a real crawler and real Lighthouse, proposes every edit before applying it, and never invents search volume, keyword difficulty, or backlink data."
 version: 1.2.1
 ---
 
-# seo-repair
+# sitemend
 
 An SEO **repair system**, not a checklist. It crawls the site, produces evidence-backed
 findings in dependency order, proposes fixes, and re-verifies after they land.
@@ -39,10 +39,10 @@ plausible-looking figure. See [`references/capability-tiers.md`](references/capa
 
 | Invocation | Does | Writes |
 | --- | --- | --- |
-| `seo-repair audit <path\|url>` | Crawl → audit → report + dashboard. Establishes the **baseline**. | report only |
-| `seo-repair plan` | Ranks findings into stage-ordered batches; previews the exact diff for each | nothing |
-| `seo-repair apply <batch-id>` | Applies **one approved batch**, then re-checks that stage | source files |
-| `seo-repair verify` | Re-crawl, diff vs. baseline, regression gate, GSC handoff list | report only |
+| `sitemend audit <path\|url>` | Crawl → audit → report + dashboard. Establishes the **baseline**. | report only |
+| `sitemend plan` | Ranks findings into stage-ordered batches; previews the exact diff for each | nothing |
+| `sitemend apply <batch-id>` | Applies **one approved batch**, then re-checks that stage | source files |
+| `sitemend verify` | Re-crawl, diff vs. baseline, regression gate, GSC handoff list | report only |
 
 Bare invocation with no verb → `audit`. `plan` refuses without a baseline; `apply`
 refuses without an approved plan and without a named batch id.
@@ -209,6 +209,6 @@ If a skill covering one of these is installed, hand off to it rather than improv
 
 - **AEO / GEO / getting cited by LLMs.** This skill covers classic crawl/index/rank only.
 - **Greenfield information architecture** — deciding what pages a new site should have.
-  `seo-repair` audits and repairs an architecture that already exists.
-- **Advisory review of content you cannot crawl.** `seo-repair` needs a codebase or a
+  `sitemend` audits and repairs an architecture that already exists.
+- **Advisory review of content you cannot crawl.** `sitemend` needs a codebase or a
   reachable URL, because every finding it makes must cite evidence.

@@ -1,10 +1,10 @@
-"""seo_repair.py -- one command for the whole audit pipeline, no agent required.
+"""sitemend.py -- one command for the whole audit pipeline, no agent required.
 
-  python seo_repair.py audit  <folder | https://site> [--out DIR] [--fail-on high]
-  python seo_repair.py verify <folder | https://site> --baseline DIR/findings.json [--out DIR]
+  python sitemend.py audit  <folder | https://site> [--out DIR] [--fail-on high]
+  python sitemend.py verify <folder | https://site> --baseline DIR/findings.json [--out DIR]
 
 `audit` chains crawl -> schema_check -> audit -> report -> dashboard and leaves
-everything in --out (default ./seo-repair-out): findings.json, SEO-REPORT-<date>.md and
+everything in --out (default ./sitemend-out): findings.json, SEO-REPORT-<date>.md and
 dashboard.html. It edits nothing in the audited site. `verify` re-audits and diffs
 against an earlier findings.json. Applying fixes stays a Claude Code job, because each
 edit needs your approval.
@@ -80,7 +80,7 @@ def main():
     for name in ("audit", "verify"):
         sp = sub.add_parser(name)
         sp.add_argument("target", help="site folder or http(s) URL")
-        sp.add_argument("--out", default="seo-repair-out")
+        sp.add_argument("--out", default="sitemend-out")
         sp.add_argument("--max-pages", type=int, default=200)
         sp.add_argument("--site-name")
         sp.add_argument("--fail-on", choices=SEVERITY[1:])

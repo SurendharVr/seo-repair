@@ -1,4 +1,4 @@
-# Copy to .github/workflows/seo-repair.yml in the site you want to guard.
+# Copy to .github/workflows/sitemend.yml in the site you want to guard.
 # Audits the checked-out site on every pull request and fails the check when a
 # critical finding is open. The report and dashboard are attached to the run.
 name: SEO audit
@@ -16,19 +16,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Cloned outside the workspace so the audit does not crawl its own source.
-      - name: Install seo-repair
-        run: |
-          git clone --depth 1 --branch v1.1.0 https://github.com/SurendharVr/seo-repair "$RUNNER_TEMP/seo-repair"
-          pip install -r "$RUNNER_TEMP/seo-repair/requirements.txt"
+      # Pinned, so a new release never changes what fails your build without a PR.
+      - name: Install sitemend
+        run: pip install sitemend==1.2.1
 
       # Point the first argument at the folder that holds your site (. for the repo
       # root). Start with --fail-on critical; tighten to high once the backlog is clear.
       - name: Audit
-        run: python "$RUNNER_TEMP/seo-repair/scripts/seo_repair.py" audit . --out seo-repair-out --fail-on critical
+        run: sitemend audit . --out sitemend-out --fail-on critical
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: seo-repair-report
-          path: seo-repair-out/
+          name: sitemend-report
+          path: sitemend-out/

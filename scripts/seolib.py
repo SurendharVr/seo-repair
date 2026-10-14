@@ -1,4 +1,4 @@
-"""Shared helpers for the seo-repair skill: URL mapping, robots.txt, minhash, text.
+"""Shared helpers for the sitemend skill: URL mapping, robots.txt, minhash, text.
 
 Deterministic by design -- every hash here must produce identical output across
 runs and machines so that `verify` can diff a later crawl against a baseline.
@@ -22,7 +22,8 @@ EXCLUDE_DIRS = {
     "dist", "build", "_site", "out", "node_modules", ".git", ".next", ".nuxt",
     ".svelte-kit", ".cache", "coverage", "vendor", "__pycache__", ".venv",
     "venv", ".idea", ".vscode", "tmp", "temp",
-    "seo-repair-out",   # this tool's own default output, so a re-run never audits its last report
+    "sitemend-out",   # this tool's own default output, so a re-run never audits its last report
+    "seo-repair-out", # the same, from before the rename to sitemend
 }
 
 HTML_EXT = (".html", ".htm")
@@ -304,14 +305,14 @@ def find_chrome():
 def chrome_cmd(chrome, url, profile, nt=None, root=None, env=None):
     """The headless-Chrome command line. --no-sandbox runs the audited site's JavaScript
     without Chrome's sandbox, so it is added only for root (Chrome refuses to start as
-    root otherwise) or when SEO_REPAIR_NO_SANDBOX=1 (containers, some CI images).
+    root otherwise) or when SITEMEND_NO_SANDBOX=1 (containers, some CI images).
     nt/root/env are parameters so tests need no particular OS."""
     nt = os.name == "nt" if nt is None else nt
     env = os.environ if env is None else env
     root = (not nt and os.geteuid() == 0) if root is None else root
     cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
            "--user-data-dir=" + profile, "--virtual-time-budget=8000", "--dump-dom", url]
-    if not nt and (root or env.get("SEO_REPAIR_NO_SANDBOX") == "1"):
+    if not nt and (root or env.get("SITEMEND_NO_SANDBOX") == "1"):
         cmd.insert(1, "--no-sandbox")
     return cmd
 
@@ -324,7 +325,7 @@ def render_dom(chrome, url, timeout=30):
     Returns (html_or_None, error_or_None). The profile is throwaway; on Windows Chrome
     often holds it open past exit, so cleanup failures are ignored.
     """
-    profile = tempfile.mkdtemp(prefix="seo-repair-chrome-")
+    profile = tempfile.mkdtemp(prefix="sitemend-chrome-")
     nt = os.name == "nt"
     cmd = chrome_cmd(chrome, url, profile)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,

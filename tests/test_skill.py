@@ -1,4 +1,4 @@
-"""Regression tests for the seo-repair skill.
+"""Regression tests for the sitemend skill.
 
 These exist because this tool's only value is that its findings can be trusted. Every
 test below pins down a calibration decision that was made deliberately after a real
@@ -25,7 +25,7 @@ import audit          # noqa: E402
 import crawl          # noqa: E402
 import report         # noqa: E402
 import schema_check   # noqa: E402
-import seo_repair     # noqa: E402
+import sitemend     # noqa: E402
 import seolib as S    # noqa: E402
 import verify as V    # noqa: E402
 import vitals          # noqa: E402
@@ -49,7 +49,7 @@ class Fixture:
     """A throwaway site on disk."""
 
     def __init__(self):
-        self.root = tempfile.mkdtemp(prefix="seo-repair-test-")
+        self.root = tempfile.mkdtemp(prefix="sitemend-test-")
 
     def write(self, relpath, content):
         full = os.path.join(self.root, relpath.replace("/", os.sep))
@@ -466,7 +466,7 @@ class TestReport(Base):
         fdoc = {"gates": [{"gate": "A", "name": "n", "rule": "r", "status": "CLEAR",
                            "detail": "d"}]}
         md = report.build_markdown(crawl_doc, fdoc, [], None, "x.test")
-        self.assertIn('seo_repair.py audit "https://x.test/"', md)
+        self.assertIn('sitemend.py audit "https://x.test/"', md)
         self.assertNotIn("--root", md)
 
 
@@ -476,26 +476,26 @@ class TestCli(Base):
     def test_audit_writes_every_artifact_and_edits_nothing(self):
         self.fx.write("index.html", page_html())
         before = sorted(os.listdir(self.fx.root))
-        out = os.path.join(tempfile.mkdtemp(prefix="seo-repair-out-"), "o")
+        out = os.path.join(tempfile.mkdtemp(prefix="sitemend-out-"), "o")
         self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
-        findings = seo_repair.audit(self.fx.root, out, 200, None)
+        findings = sitemend.audit(self.fx.root, out, 200, None)
         names = os.listdir(out)
         for want in ("crawl.json", "schema.json", "findings.json", "report-data.json",
                      "dashboard.html"):
             self.assertIn(want, names)
         self.assertTrue(any(n.startswith("SEO-REPORT-") for n in names))
         self.assertEqual(sorted(os.listdir(self.fx.root)), before, "audit must not touch the site")
-        self.assertGreaterEqual(seo_repair.worst_open(findings), -1)
+        self.assertGreaterEqual(sitemend.worst_open(findings), -1)
 
     def test_rerun_does_not_audit_its_own_report(self):
         """REGRESSION: with --out inside the audited folder (the default when run as
         `audit .`), the second run crawled the first run's dashboard.html and reported
         7 extra findings on the demo site."""
         self.fx.write("index.html", page_html())
-        out = os.path.join(self.fx.root, "seo-repair-out")
+        out = os.path.join(self.fx.root, "sitemend-out")
         counts = []
         for _ in range(2):
-            findings = seo_repair.audit(self.fx.root, out, 200, None)
+            findings = sitemend.audit(self.fx.root, out, 200, None)
             counts.append(len(json.load(open(findings, encoding="utf-8"))["findings"]))
         self.assertEqual(counts[0], counts[1])
 
@@ -503,20 +503,20 @@ class TestCli(Base):
         path = os.path.join(self.fx.root, "f.json")
         with open(path, "w") as f:
             json.dump({"findings": [{"severity": "low"}, {"severity": "high"}]}, f)
-        self.assertEqual(seo_repair.SEVERITY[seo_repair.worst_open(path)], "high")
+        self.assertEqual(sitemend.SEVERITY[sitemend.worst_open(path)], "high")
 
     def test_output_folder_ignores_itself(self):
         """REGRESSION found by the v1.0.3 review: `audit .` left a full-text crawl.json
         in the audited repo with nothing stopping `git add -A`."""
         self.fx.write("index.html", page_html())
-        out = os.path.join(tempfile.mkdtemp(prefix="seo-repair-out-"), "o")
+        out = os.path.join(tempfile.mkdtemp(prefix="sitemend-out-"), "o")
         self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
-        seo_repair.audit(self.fx.root, out, 200, None)
+        sitemend.audit(self.fx.root, out, 200, None)
         with open(os.path.join(out, ".gitignore")) as f:
             self.assertEqual(f.read(), "*\n")
 
     def _verify_args(self):
-        d = tempfile.mkdtemp(prefix="seo-repair-verify-")
+        d = tempfile.mkdtemp(prefix="sitemend-verify-")
         self.addCleanup(shutil.rmtree, d, True)
         base, cur = os.path.join(d, "b.json"), os.path.join(d, "c.json")
         with open(base, "w") as f:
@@ -529,13 +529,13 @@ class TestCli(Base):
     def test_failed_regression_gate_is_a_result_not_a_crash(self):
         """REGRESSION found by the v1.0.3 review: verify.py exits 1 on a FAILED gate and
         run() reported that as 'verify.py failed:'."""
-        r = seo_repair.run("verify.py", *self._verify_args(), ok=(0, 1))
+        r = sitemend.run("verify.py", *self._verify_args(), ok=(0, 1))
         self.assertEqual(r.returncode, 1)
         self.assertIn("REGRESSION GATE: FAIL", r.stdout)
 
     def test_unexpected_exit_codes_still_abort(self):
         with self.assertRaises(SystemExit):
-            seo_repair.run("verify.py", *self._verify_args())
+            sitemend.run("verify.py", *self._verify_args())
 
 
 # --------------------------------------------------------------- schema
@@ -854,7 +854,7 @@ class TestHttpSitemapSeeding(unittest.TestCase):
         import http.server
         import threading
 
-        cls.root = tempfile.mkdtemp(prefix="seo-repair-http-test-")
+        cls.root = tempfile.mkdtemp(prefix="sitemend-http-test-")
         body = "<h1>H</h1><p>" + ("word " * 300) + "</p>"
 
         def w(name, html):
@@ -942,7 +942,7 @@ class TestHttpRedirects(unittest.TestCase):
         import http.server
         import threading
 
-        cls.root = tempfile.mkdtemp(prefix="seo-repair-redirect-test-")
+        cls.root = tempfile.mkdtemp(prefix="sitemend-redirect-test-")
         os.makedirs(os.path.join(cls.root, "about"))
         os.makedirs(os.path.join(cls.root, "contact"))
         with open(os.path.join(cls.root, "index.html"), "w", encoding="utf-8") as f:
@@ -1024,7 +1024,7 @@ class TestPlaceholderDomain(Base):
     """A site whose canonicals or sitemap point at example.com, localhost or similar tells
     search engines to index a domain that is not its own. It was missed because the base
     origin is inferred from those same URLs, so a uniformly wrong site looked consistent.
-    Found when a plain prompt noticed it and seo-repair did not."""
+    Found when a plain prompt noticed it and sitemend did not."""
 
     def _ids(self, canonical=None, sitemap_host=None, robots_sitemap=None):
         extra = '<link rel="canonical" href="{0}">'.format(canonical) if canonical else ""
@@ -1352,7 +1352,7 @@ class _JsServer:
 
 class TestRenderCrawl(unittest.TestCase):
     """The plain crawl cannot see JS-built content and says so; --render shows it.
-    The Chrome half is opt-in (SEO_REPAIR_RENDER_TEST=1), like the Lighthouse test: CI
+    The Chrome half is opt-in (SITEMEND_RENDER_TEST=1), like the Lighthouse test: CI
     cannot be assumed to have a usable headless Chrome, and a skipped test is honest."""
 
     @classmethod
@@ -1374,8 +1374,8 @@ class TestRenderCrawl(unittest.TestCase):
         self.assertLess(page["full_word_count"], 5)     # just the <title>
         self.assertNotIn("rendered", page)
 
-    @unittest.skipUnless(os.environ.get("SEO_REPAIR_RENDER_TEST") == "1" and S.find_chrome(),
-                         "set SEO_REPAIR_RENDER_TEST=1 (needs Chrome, Chromium or Edge)")
+    @unittest.skipUnless(os.environ.get("SITEMEND_RENDER_TEST") == "1" and S.find_chrome(),
+                         "set SITEMEND_RENDER_TEST=1 (needs Chrome, Chromium or Edge)")
     def test_render_crawl_sees_the_javascript_content(self):
         page = crawl.crawl_http(self.base, render=True, render_limit=3)[0][0]
         self.assertTrue(page["rendered"])
@@ -1486,11 +1486,11 @@ class TestChromeCommand(unittest.TestCase):
 
     def test_env_var_opts_in_explicitly(self):
         self.assertIn("--no-sandbox",
-                      self.cmd(nt=False, root=False, env={"SEO_REPAIR_NO_SANDBOX": "1"}))
+                      self.cmd(nt=False, root=False, env={"SITEMEND_NO_SANDBOX": "1"}))
 
     def test_windows_never_gets_the_flag(self):
         self.assertNotIn("--no-sandbox",
-                         self.cmd(nt=True, root=True, env={"SEO_REPAIR_NO_SANDBOX": "1"}))
+                         self.cmd(nt=True, root=True, env={"SITEMEND_NO_SANDBOX": "1"}))
 
 
 class TestIntlDemoSite(unittest.TestCase):
@@ -1501,9 +1501,9 @@ class TestIntlDemoSite(unittest.TestCase):
     ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples", "demo-site-intl")
 
     def test_planted_defects_are_found_and_nothing_else_leaks(self):
-        out = os.path.join(tempfile.mkdtemp(prefix="seo-repair-intl-"), "o")
+        out = os.path.join(tempfile.mkdtemp(prefix="sitemend-intl-"), "o")
         self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
-        findings = seo_repair.audit(self.ROOT, out, 200, None)
+        findings = sitemend.audit(self.ROOT, out, 200, None)
         with open(findings, encoding="utf-8") as f:
             ids = sorted(x["id"] for x in json.load(f)["findings"])
         self.assertEqual(ids, sorted([
@@ -1532,7 +1532,7 @@ class TestPackaging(unittest.TestCase):
         """pyproject maps scripts/ and assets/ into the wheel by directory, so a new script
         is picked up automatically -- but only if it is a module in scripts/."""
         scripts = {f for f in os.listdir(os.path.join(self.ROOT, "scripts")) if f.endswith(".py")}
-        self.assertLessEqual({"seo_repair.py", "crawl.py", "audit.py", "report.py", "verify.py",
+        self.assertLessEqual({"sitemend.py", "crawl.py", "audit.py", "report.py", "verify.py",
                               "schema_check.py", "build_dashboard.py", "seolib.py", "__init__.py"},
                              scripts)
         self.assertTrue(os.path.isfile(os.path.join(self.ROOT, "assets", "dashboard.html")))
@@ -1638,7 +1638,7 @@ class TestVitalsCommand(unittest.TestCase):
         """REGRESSION: the timeout used to kill only the shell, leaving node/Chrome
         running. Here the child spawns a grandchild that ticks into a file; after the
         timeout the ticking must stop."""
-        d = tempfile.mkdtemp(prefix="seo-repair-kill-")
+        d = tempfile.mkdtemp(prefix="sitemend-kill-")
         self.addCleanup(shutil.rmtree, d, True)
         tick = os.path.join(d, "tick.txt")
         grand = os.path.join(d, "grand.py")
@@ -1660,8 +1660,8 @@ class TestVitalsCommand(unittest.TestCase):
         self.assertEqual(os.path.getsize(tick), before, "the grandchild is still running")
 
 
-@unittest.skipUnless(os.environ.get("SEO_REPAIR_LIGHTHOUSE_TEST") == "1",
-                     "set SEO_REPAIR_LIGHTHOUSE_TEST=1 (needs npx, Lighthouse and Chrome)")
+@unittest.skipUnless(os.environ.get("SITEMEND_LIGHTHOUSE_TEST") == "1",
+                     "set SITEMEND_LIGHTHOUSE_TEST=1 (needs npx, Lighthouse and Chrome)")
 class TestVitalsLive(unittest.TestCase):
     """Opt-in: runs real Lighthouse against a local server and checks the URL Chrome
     actually requested. CI has no Chrome, so this is run by hand before touching vitals.py."""
@@ -1689,7 +1689,7 @@ class TestVitalsLive(unittest.TestCase):
         srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         self.addCleanup(srv.shutdown)
-        wd = tempfile.mkdtemp(prefix="seo-repair-lh-test-")
+        wd = tempfile.mkdtemp(prefix="sitemend-lh-test-")
         self.addCleanup(shutil.rmtree, wd, True)
         base = "http://127.0.0.1:%d" % srv.server_address[1]
         res, err = vitals.run_one(base + "/?q=a&lang=en", "desktop", wd, timeout=150)

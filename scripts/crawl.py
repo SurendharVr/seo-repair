@@ -1,4 +1,4 @@
-"""crawl.py -- stage 0 of seo-repair. Produces the single crawl.json that every
+"""crawl.py -- stage 0 of sitemend. Produces the single crawl.json that every
 later stage reads.
 
 Two modes:
@@ -425,7 +425,7 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
     rendered = 0
 
     sess = requests.Session()
-    sess.headers["User-Agent"] = "seo-repair-crawler/1.0 (+local audit)"
+    sess.headers["User-Agent"] = "sitemend-crawler/1.0 (+local audit)"
     origin = "{0}://{1}".format(*urlsplit(start)[:2])
 
     # The sitemap is fetched first because it seeds the frontier. A pure link walk cannot
@@ -597,7 +597,7 @@ def main():
 
     doc = {
         "meta": {
-            "tool": "seo-repair/crawl.py",
+            "tool": "sitemend/crawl.py",
             "version": 1,
             "mode": args.mode,
             "source": source,

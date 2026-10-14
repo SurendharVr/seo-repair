@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+**Renamed everywhere to `sitemend`.** 1.2.1 renamed only the PyPI package and command;
+this finishes the job. Breaking for anyone on the old names:
+
+- **Skill and plugin:** `/sitemend`, installed as `sitemend@sitemend` from
+  `SurendharVr/sitemend`. Remove a `seo-repair` plugin or `~/.claude/skills/seo-repair`
+  copy, then install the new one.
+- **Script:** `scripts/seo_repair.py` is now `scripts/sitemend.py`.
+- **Environment variables:** `SEO_REPAIR_*` are now `SITEMEND_*`
+  (`SITEMEND_NO_SANDBOX`, `SITEMEND_RENDER_TEST`, `SITEMEND_LIGHTHOUSE_TEST`).
+- **Default output folder:** `./sitemend-out`. An old `seo-repair-out/` is still skipped
+  by the crawler and still git-ignored, so a leftover report is never audited or committed.
+- Crawler User-Agent is `sitemend-crawler/1.0`; the dashboard and report say sitemend.
+- The GitHub Action example installs `sitemend==1.2.1` from PyPI instead of cloning a tag.
+
 ## 1.2.1 - 2026-10-14
 
 First release on PyPI, as `sitemend`.

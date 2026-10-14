@@ -58,7 +58,7 @@ Use this as a **check, not as the tagging command.** It verifies that `plugin.js
 the enclosing marketplace entry agree on the version, and that the working tree is
 clean — both of which are what you actually want confirmed here.
 
-It would create a tag named `seo-repair--v1.0.0`, which is the convention for a
+It would create a tag named `sitemend--v1.0.0`, which is the convention for a
 monorepo shipping several plugins. This repo ships one plugin and tags plain `vX.Y.Z`
 to match its GitHub releases. Don't mix the two: pick the plain form (below) and let
 `--dry-run` do the validating.
@@ -122,28 +122,28 @@ touched:
 ```bash
 mkdir /tmp/plugintest && cd /tmp/plugintest
 claude plugin marketplace add <owner>/sitemend --scope project
-claude plugin install seo-repair@seo-repair --scope project -y
-claude plugin details seo-repair@seo-repair
+claude plugin install sitemend@sitemend --scope project -y
+claude plugin details sitemend@sitemend
 ```
 
 Then clean up:
 
 ```bash
-claude plugin uninstall seo-repair@seo-repair --scope project
-claude plugin marketplace remove seo-repair --scope project
-rm -rf ~/.claude/plugins/cache/seo-repair    # marketplace remove orphans this; prune does not clear it
+claude plugin uninstall sitemend@sitemend --scope project
+claude plugin marketplace remove sitemend --scope project
+rm -rf ~/.claude/plugins/cache/sitemend    # marketplace remove orphans this; prune does not clear it
 ```
 
 ### Do not leave the plugin installed on a development machine
 
-Installing `seo-repair@<marketplace>` **shadows** a `seo-repair@skills-dir` copy in
+Installing `sitemend@<marketplace>` **shadows** a `sitemend@skills-dir` copy in
 `~/.claude/skills/`. Claude Code reports this clearly rather than failing:
 
-> `seo-repair@skills-dir`: ✘ Not loaded — the name "seo-repair" is already taken by an
+> `sitemend@skills-dir`: ✘ Not loaded — the name "sitemend" is already taken by an
 > installed plugin, which takes precedence.
 
 Graceful, but the consequence is that the copy you edit stops being the copy that runs.
-If your `~/.claude/skills/seo-repair` is the git checkout, uninstall the plugin when the
+If your `~/.claude/skills/sitemend` is the git checkout, uninstall the plugin when the
 test is done.
 
 ## What CI does and does not prove
