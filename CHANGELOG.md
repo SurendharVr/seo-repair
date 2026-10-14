@@ -1,15 +1,15 @@
 # Changelog
 
-## Unreleased
+## 1.0.2 - 2026-10-14
+
+The tool now runs without an agent, and two false positives found on the first real-site
+run are fixed. Against a real 13-page catering site, findings went from 14 to 3, one of
+them real.
 
 - **`scripts/seo_repair.py`: the whole pipeline in one command.** `audit` chains crawl,
   schema check, audit, report and dashboard for a folder or a URL; `verify` diffs a new
   audit against an earlier `findings.json`; `--fail-on` turns open findings into a CI
-  exit code. Needs no agent. 2 new tests (58 total).
-
-Two false positives, both found by the first run against a real site (a 13-page
-catering site, http mode). 14 findings became 3, one of them real.
-
+  exit code. Needs no agent.
 - **`S5-SCHEMA-REQUIRED-MISSING` no longer fires on `@id` references.** A nested
   `{"@id": ".../#business", "name": ...}` on a Menu or Service page was reported as a
   FoodEstablishment missing its address, though the full node is defined on another
@@ -20,7 +20,8 @@ catering site, http mode). 14 findings became 3, one of them real.
   set dish" no longer flag each other ten ways. Two pages chasing the same
   distinguishing terms are still reported. Ceiling: a family of 5+ near-identical
   pages on a 13-page site reads as a template.
-- 4 new tests. Demo-site output is unchanged: 22 findings.
+- README leads with the outcome, says who it is for, and has a "Works with" section.
+- 6 new tests (58 total). Demo-site output is unchanged: 22 findings.
 
 ## 1.0.1
 
