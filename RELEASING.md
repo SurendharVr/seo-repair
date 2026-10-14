@@ -32,6 +32,10 @@ things must move together or CI fails and the docs start lying:
 - the defect table in `EXPECTED.md`
 - the `required` set of finding ids in `.github/workflows/tests.yml`
 
+`examples/demo-site-intl/` is the second fixture (hreflang, mixed content, `lastmod`,
+JS shell). It is checked by a unit test rather than by the CI script, and its expected
+list lives in `examples/demo-site-intl/EXPECTED.md`.
+
 **3. Validate the plugin and marketplace manifests.**
 
 ```bash

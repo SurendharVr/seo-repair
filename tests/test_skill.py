@@ -1487,6 +1487,25 @@ class TestChromeCommand(unittest.TestCase):
                          self.cmd(nt=True, root=True, env={"SEO_REPAIR_NO_SANDBOX": "1"}))
 
 
+class TestIntlDemoSite(unittest.TestCase):
+    """End-to-end guard for the v1.2.0 rules: crawl the fixture on disk through the real
+    CLI path and require exactly the planted findings, so a rule that stops firing, or
+    starts firing on clean pages, fails here."""
+
+    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples", "demo-site-intl")
+
+    def test_planted_defects_are_found_and_nothing_else_leaks(self):
+        out = os.path.join(tempfile.mkdtemp(prefix="seo-repair-intl-"), "o")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        findings = seo_repair.audit(self.ROOT, out, 200, None)
+        with open(findings, encoding="utf-8") as f:
+            ids = sorted(x["id"] for x in json.load(f)["findings"])
+        self.assertEqual(ids, sorted([
+            "S1-HREFLANG-BROKEN", "S1-HREFLANG-INVALID", "S1-HREFLANG-NO-RETURN",
+            "S1-JS-SHELL", "S1-MIXED-CONTENT", "S1-SITEMAP-LASTMOD-INVALID",
+            "S2-BREADCRUMB-MISSING", "S3-THIN", "S3-THIN", "S3-THIN", "S3-THIN"]))
+
+
 class TestPackaging(unittest.TestCase):
     ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
