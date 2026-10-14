@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 - 2026-10-14
 
 Two new checks, found by comparing against a plain prompt that noticed both and seo-repair
 did not, and one dashboard bug found while regenerating the README screenshot.
