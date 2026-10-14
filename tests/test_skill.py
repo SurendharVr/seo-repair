@@ -486,6 +486,38 @@ class TestCli(Base):
             json.dump({"findings": [{"severity": "low"}, {"severity": "high"}]}, f)
         self.assertEqual(seo_repair.SEVERITY[seo_repair.worst_open(path)], "high")
 
+    def test_output_folder_ignores_itself(self):
+        """REGRESSION found by the v1.0.3 review: `audit .` left a full-text crawl.json
+        in the audited repo with nothing stopping `git add -A`."""
+        self.fx.write("index.html", page_html())
+        out = os.path.join(tempfile.mkdtemp(prefix="seo-repair-out-"), "o")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        seo_repair.audit(self.fx.root, out, 200, None)
+        with open(os.path.join(out, ".gitignore")) as f:
+            self.assertEqual(f.read(), "*\n")
+
+    def _verify_args(self):
+        d = tempfile.mkdtemp(prefix="seo-repair-verify-")
+        self.addCleanup(shutil.rmtree, d, True)
+        base, cur = os.path.join(d, "b.json"), os.path.join(d, "c.json")
+        with open(base, "w") as f:
+            json.dump({"findings": []}, f)
+        with open(cur, "w") as f:
+            json.dump({"findings": [{"id": "X", "severity": "high", "pages": ["/"],
+                                     "evidence": "e", "message": "m"}]}, f)
+        return ["--baseline", base, "--current", cur, "--out", os.path.join(d, "v.json")]
+
+    def test_failed_regression_gate_is_a_result_not_a_crash(self):
+        """REGRESSION found by the v1.0.3 review: verify.py exits 1 on a FAILED gate and
+        run() reported that as 'verify.py failed:'."""
+        r = seo_repair.run("verify.py", *self._verify_args(), ok=(0, 1))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("REGRESSION GATE: FAIL", r.stdout)
+
+    def test_unexpected_exit_codes_still_abort(self):
+        with self.assertRaises(SystemExit):
+            seo_repair.run("verify.py", *self._verify_args())
+
 
 # --------------------------------------------------------------- schema
 

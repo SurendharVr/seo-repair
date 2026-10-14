@@ -23,17 +23,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SEVERITY = ["low", "medium", "high", "critical"]
 
 
-def run(script, *args):
+def run(script, *args, ok=(0,)):
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
     r = subprocess.run([sys.executable, os.path.join(HERE, script)] + [str(a) for a in args],
                        capture_output=True, text=True, encoding="utf-8", env=env)
-    if r.returncode:
+    if r.returncode not in ok:
         sys.exit("{0} failed:\n{1}{2}".format(script, r.stdout, r.stderr))
-    return r.stdout
+    return r
 
 
 def audit(target, out, max_pages, site_name):
     os.makedirs(out, exist_ok=True)
+    gi = os.path.join(out, ".gitignore")
+    if not os.path.exists(gi):
+        with open(gi, "w") as f:
+            f.write("*\n")
     p = lambda name: os.path.join(out, name)
     if target.startswith(("http://", "https://")):
         u = urlsplit(target)
@@ -48,7 +52,7 @@ def audit(target, out, max_pages, site_name):
     run("crawl.py", *crawl_args, "--out", p("crawl.json"))
     run("schema_check.py", "--crawl", p("crawl.json"), "--out", p("schema.json"))
     summary = run("audit.py", "--crawl", p("crawl.json"), "--schema", p("schema.json"),
-                  "--out", p("findings.json"))
+                  "--out", p("findings.json")).stdout
     report_args = ["--crawl", p("crawl.json"), "--findings", p("findings.json"),
                    "--outdir", out, "--data-out", p("report-data.json")]
     if site_name:
@@ -81,9 +85,14 @@ def main():
     args = ap.parse_args()
 
     findings = audit(args.target, args.out, args.max_pages, args.site_name)
+    regressed = False
     if args.cmd == "verify":
-        print(run("verify.py", "--baseline", args.baseline, "--current", findings,
-                  "--out", os.path.join(args.out, "verify.json")).rstrip())
+        r = run("verify.py", "--baseline", args.baseline, "--current", findings,
+                "--out", os.path.join(args.out, "verify.json"), ok=(0, 1))
+        print(r.stdout.rstrip())
+        regressed = r.returncode == 1
+    if regressed:
+        sys.exit("FAIL: regression gate")
     if args.fail_on and worst_open(findings) >= SEVERITY.index(args.fail_on):
         sys.exit("FAIL: open finding at '{0}' or worse".format(args.fail_on))
 
