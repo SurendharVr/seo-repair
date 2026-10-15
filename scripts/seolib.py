@@ -310,21 +310,28 @@ def chrome_cmd(chrome, url, profile, nt=None, root=None, env=None):
     nt = os.name == "nt" if nt is None else nt
     env = os.environ if env is None else env
     root = (not nt and os.geteuid() == 0) if root is None else root
+    # A fresh profile otherwise starts component-updater and other background fetches
+    # on launch; they are not the page's own requests and only cost time on a slow
+    # network. Puppeteer and Lighthouse launch Chrome with the same two flags.
     cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
+           "--disable-background-networking", "--disable-component-update",
            "--user-data-dir=" + profile, "--virtual-time-budget=8000", "--dump-dom", url]
     if not nt and (root or env.get("SITEMEND_NO_SANDBOX") == "1"):
         cmd.insert(1, "--no-sandbox")
     return cmd
 
 
-def render_dom(chrome, url, timeout=30):
+def render_dom(chrome, url, timeout=None):
     """The DOM after JavaScript has run, via `chrome --headless --dump-dom`.
 
     No Playwright or Selenium: the Lighthouse step already needs a local Chrome, and
     --dump-dom is the platform's own answer to "what does the page look like after JS".
     Returns (html_or_None, error_or_None). The profile is throwaway; on Windows Chrome
     often holds it open past exit, so cleanup failures are ignored.
+    timeout defaults to SITEMEND_RENDER_TIMEOUT seconds, else 30 (slow CI runners).
     """
+    if timeout is None:
+        timeout = int(os.environ.get("SITEMEND_RENDER_TIMEOUT") or 30)
     profile = tempfile.mkdtemp(prefix="sitemend-chrome-")
     nt = os.name == "nt"
     cmd = chrome_cmd(chrome, url, profile)

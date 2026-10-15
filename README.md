@@ -305,7 +305,8 @@ only requests your own site.
   mobile-overflow check is still Claude Code only (it uses the built-in browser tools).
   The render path is verified against real Chrome on Windows, and in CI on Ubuntu; the
   opt-in test is `SITEMEND_RENDER_TEST=1`. Chrome runs with its sandbox on; as root, or in a container
-  where it will not start, set SITEMEND_NO_SANDBOX=1.
+  where it will not start, set SITEMEND_NO_SANDBOX=1. Each page gets 30 seconds; on a slow
+  machine raise it with SITEMEND_RENDER_TIMEOUT (seconds).
 - **Redirect chains, response headers and rendering need an http crawl**, because a
   folder on disk has none of them. Pagination (`rel=next/prev`) is not checked: Google
   stopped using it.

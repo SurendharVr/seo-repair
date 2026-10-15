@@ -106,4 +106,7 @@ jobs:
         env:
           SITEMEND_RENDER_TEST: "1"
           SITEMEND_NO_SANDBOX: "1"
+          # The 30s default had too little margin on a slow runner (1.4.2 PR: two
+          # timeouts, then 22s). A real hang still fails, with the reason.
+          SITEMEND_RENDER_TIMEOUT: "90"
         run: python -m unittest tests.test_skill.TestRenderCrawl -v

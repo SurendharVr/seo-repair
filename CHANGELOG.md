@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **`--render` timeout is configurable, and the CI render job no longer flakes.** The
+  per-page Chrome timeout (30 seconds) can be raised with `SITEMEND_RENDER_TIMEOUT`; the CI
+  render job sets 90. Chrome now starts with `--disable-background-networking
+  --disable-component-update`, so a fresh profile does not spend launch time on its own
+  update fetches. The render test reports the render error (for example "render timed out
+  after 30s") instead of a `KeyError`.
+
 ## 1.4.2 - 2026-10-15
 
 - **A preview host in the whole sitemap no longer becomes the base URL.** fs mode infers
