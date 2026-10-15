@@ -39,7 +39,7 @@ jobs:
       # Pinned, so a new release never changes what fails your build without a PR.
       # 1.4.0 is the first release that writes verify.md for the comment.
       - name: Install sitemend
-        run: pip install sitemend==1.4.1
+        run: pip install sitemend==1.4.2
 
       - name: Audit the base branch
         run: sitemend audit "base/$SITE_DIR" --out base-out

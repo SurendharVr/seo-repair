@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.2 - 2026-10-15
 
 - **A preview host in the whole sitemap no longer becomes the base URL.** fs mode infers
   the production origin when `--base-url` is not given, and took the first sitemap URL.
@@ -10,6 +10,9 @@
   in favour of the canonical or robots.txt `Sitemap:` origin, falling back to the first
   URL when nothing else is on offer. The leak itself is still the critical
   `S1-HOST-MISMATCH`.
+
+The example GitHub Action now pins `sitemend==1.4.2`. The README links a benchmark write-up
+(`docs/benchmark-2026-10.md`) and a live demo PR.
 
 ## 1.4.1 - 2026-10-15
 
