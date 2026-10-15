@@ -130,6 +130,22 @@ class TestUrlMapping(Base):
         self.fx.write("services.html", page_html(title="Services Page With A Fine Title Here"))
         self.assertNotIn("S1-BROKEN-LINK", self.fx.ids())
 
+    def test_any_non_http_scheme_is_not_a_page_link(self):
+        """REGRESSION found by the 2026-10-16 audit: skype:, viber:, geo: and ftp: links
+        resolved to /skype:echo123 and were reported as high S1-BROKEN-LINK."""
+        for href in ("skype:echo123?call", "viber://chat?number=1", "geo:37.7,-122.4",
+                     "ftp://files.x.org/a.zip", "mailto:a@b.c", "tel:+1"):
+            with self.subTest(href=href):
+                self.assertEqual(S.link_kind(href), "nonhttp")
+        for href in ("https://x.org/", "http://x.org/", "/a", "page.html", "./a:b"):
+            with self.subTest(href=href):
+                self.assertEqual(S.link_kind(href), "link")
+
+    def test_no_broken_link_for_app_scheme_links(self):
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="skype:echo123?call">Skype</a> ' + "word " * 300 + "</p>"))
+        self.assertNotIn("S1-BROKEN-LINK", self.fx.ids())
+
 
 class TestAbsoluteInternalLinks(Base):
     """REGRESSION found by the 2026-10-16 audit: links written as absolute URLs on the

@@ -157,9 +157,12 @@ def link_kind(href):
     low = h.lower()
     if low.startswith("#"):
         return "anchor"
-    for scheme in ("mailto:", "tel:", "javascript:", "sms:", "whatsapp:", "data:"):
-        if low.startswith(scheme):
-            return "nonhttp"
+    # Any URI scheme other than http(s) -- mailto:, tel:, javascript:, but also skype:,
+    # viber:, geo:, ftp: -- is not a page of this site. Resolved as a path, skype:x
+    # became /skype:x and was reported as a broken internal link.
+    m = re.match(r"([a-z][a-z0-9+.\-]*):", low)
+    if m and m.group(1) not in ("http", "https"):
+        return "nonhttp"
     return "link"
 
 
