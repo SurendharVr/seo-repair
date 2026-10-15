@@ -231,20 +231,14 @@ class Robots:
     def check(self, path, agent="*"):
         """Return (allowed, matched_rule). Longest matching rule wins."""
         agent = agent.lower()
-        group = None
-        for g in self.groups:
-            if agent in g["agents"]:
-                group = g
-                break
-        if group is None:
-            for g in self.groups:
-                if "*" in g["agents"]:
-                    group = g
-                    break
-        if group is None:
+        # RFC 9309 2.2.1: every group naming the agent applies, combined; only when none
+        # does do the * groups apply (combined the same way).
+        groups = ([g for g in self.groups if agent in g["agents"]]
+                  or [g for g in self.groups if "*" in g["agents"]])
+        if not groups:
             return True, None
         best = None
-        for allow, pattern in group["rules"]:
+        for allow, pattern in (r for g in groups for r in g["rules"]):
             ln = self._match(pattern, path)
             if ln is None:
                 continue

@@ -238,6 +238,25 @@ class TestExclusions(Base):
         self.assertTrue(crit, "a robots-blocked homepage is never a deliberate exclusion")
 
 
+class TestRobotsGroups(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: only the first User-agent: * group was
+    read. RFC 9309 combines every group that matches the same agent."""
+
+    TXT = ("User-agent: *\nDisallow: /admin/\n\nUser-agent: Googlebot\nDisallow: /tmp/\n\n"
+           "User-agent: *\nDisallow: /private/\n")
+
+    def test_groups_for_the_same_agent_are_merged(self):
+        r = S.Robots(self.TXT)
+        self.assertEqual(r.check("/private/x"), (False, "Disallow: /private/"))
+        self.assertEqual(r.check("/admin/x"), (False, "Disallow: /admin/"))
+        self.assertEqual(r.check("/tmp/x"), (True, None))
+
+    def test_a_named_agent_still_ignores_the_star_groups(self):
+        r = S.Robots(self.TXT)
+        self.assertEqual(r.check("/admin/x", agent="Googlebot"), (True, None))
+        self.assertEqual(r.check("/tmp/x", agent="Googlebot"), (False, "Disallow: /tmp/"))
+
+
 # --------------------------------------------------------------- Gate A
 
 class TestGateA(Base):
