@@ -675,7 +675,11 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
         if "html" not in ctype.lower():
             r.close()
             continue
-        _ = r.content   # an HTML body: read it now, so every branch below releases the connection
+        try:
+            _ = r.content   # an HTML body: read it now, so every branch below releases the connection
+        except Exception as e:
+            skipped.append({"url": path, "reason": str(e)[:200]})
+            continue
 
         if r.status_code >= 400:
             # A URL that does not resolve is not a page of the site. Recording it as one

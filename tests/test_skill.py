@@ -2287,6 +2287,45 @@ class TestHttpSkipsNonHtmlBodies(unittest.TestCase):
         pages = crawl.crawl_http("http://127.0.0.1:%d/" % srv.server_address[1])[0]
         self.assertEqual([p["url"] for p in pages], ["/"])
         self.assertLess(sent[0], 16 * 1024 * 1024)
+    def test_a_body_that_breaks_mid_read_is_skipped_not_fatal(self):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+
+        home = page_html(body='<h1>H</h1><p><a href="/broken/">b</a> ' + "word " * 300 + "</p>").encode()
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/broken/":
+                    # Promise 100000 bytes, send 10, then hang up.
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html")
+                    self.send_header("Content-Length", "100000")
+                    self.end_headers()
+                    self.wfile.write(b"<html><bo")
+                    self.wfile.flush()
+                    self.close_connection = True
+                    return
+                body = home if self.path == "/" else b"nope"
+                self.send_response(200 if self.path == "/" else 404)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        pages, _, _, _, _, _, skipped, _, _ = crawl.crawl_http("http://127.0.0.1:%d/" % srv.server_address[1])
+        self.assertEqual([p["url"] for p in pages], ["/"])
+        self.assertIn("/broken/", [s["url"] for s in skipped])
 
 
 class TestMetaRefresh(Base):
