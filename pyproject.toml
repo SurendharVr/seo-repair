@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sitemend"
 # Keep in step with .claude-plugin/plugin.json and SKILL.md; tests/test_skill.py checks it.
-version = "1.4.0"
+version = "1.4.1"
 description = "SEO regression tests for CI: crawls your site folder or URL, fails the build when a change breaks crawling or indexing, and cites the evidence. Never invents a number."
 readme = "README.md"
 license = "MIT"
