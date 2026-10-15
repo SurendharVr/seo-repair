@@ -1886,7 +1886,7 @@ class TestUncrawlableLinks(Base):
         return [f for f in self.fx.audit()["findings"] if f["id"] == "S2-UNCRAWLABLE-LINK"]
 
     def test_js_navigation_is_flagged(self):
-        for body in ('<a href="#">Pricing</a>',
+        for body in ('<p>See <a href="#">Pricing</a></p>',
                      '<a href="javascript:void(0)" onclick="go()">Pricing</a>',
                      '<a onclick="go(\'/pricing\')">Pricing</a>',
                      '<a tabindex="0">Pricing</a>',
@@ -1914,7 +1914,7 @@ class TestUncrawlableLinks(Base):
                 self.assertEqual(self._hit(body), [], body)
 
     def test_shared_nav_is_one_finding(self):
-        nav = '<a href="#">Pricing</a>'
+        nav = '<ul><li><a href="#">Pricing</a></li></ul>'
         self.fx.write("index.html", page_html(body='<h1>H</h1><a href="/b.html">b</a>' + nav))
         self.fx.write("b.html", page_html(title="Another Perfectly Reasonable Title",
                                           body='<h1>B</h1><a href="/">h</a>' + nav))
@@ -1922,6 +1922,264 @@ class TestUncrawlableLinks(Base):
         self.assertEqual(len(hit), 1)
         self.assertEqual(hit[0]["pages"], ["/", "/b.html"])
 
+
+# ------------------------------------------- false positives from the 20-site benchmark
+
+def serve(test, routes):
+    """A throwaway http server for one test: routes maps path -> (status, content type,
+    body, extra headers). Returns its base URL."""
+    try:
+        import requests  # noqa: F401
+    except ImportError:
+        raise unittest.SkipTest("requests not installed (http mode is optional)")
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            status, ctype, body, headers = routes.get(self.path, (404, "text/html", "nope", {}))
+            body = body.encode()
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            for k, v in headers.items():
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    test.addCleanup(srv.server_close)
+    test.addCleanup(srv.shutdown)
+    return "http://127.0.0.1:%d/" % srv.server_address[1]
+
+
+def http_doc(base):
+    """crawl_http plus the robots/sitemap blocks crawl.main() would build."""
+    (pages, _, robots, sitemap, _, _, skipped, _, _) = crawl.crawl_http(base)
+    rb = S.Robots(robots)
+    for p in pages:
+        p["robots_allowed"], p["robots_rule"] = rb.check(p["url"])
+    sm_urls, _ = S.parse_sitemap(sitemap)
+    return {"meta": {"source": base, "mode": "http", "page_count": len(pages),
+                     "base_url": None, "excluded_dirs_present": [], "skipped": skipped},
+            "robots": {"found": bool(robots), "sitemaps": rb.sitemaps, "groups": [], "raw": robots},
+            "sitemap": {"found": bool(sitemap), "urls": sm_urls, "notes": []},
+            "assets": [], "pages": pages, "extras": {},
+            "referenced_assets": [], "referenced_basenames": []}
+
+
+STUB = ('<!doctype html><html><head><meta http-equiv="refresh" content="{0}">'
+        '</head><body></body></html>')
+ON_PAGE = {"S3-TITLE-MISSING", "S3-VIEWPORT-MISSING", "S2-H1-MISSING", "S3-DESC-MISSING",
+           "S1-CANONICAL-MISSING", "S3-LANG-MISSING", "S3-OG-MISSING", "S3-THIN"}
+
+
+class TestMetaRefresh(Base):
+    """REGRESSION from the benchmark: docs.astro.build's home page is
+    <meta http-equiv="refresh" content="0;url=/en/getting-started/">. It was judged as a
+    page (critical missing title and viewport, plus H1, description, canonical, lang and
+    OG) and the http crawl stopped there, at 1 page."""
+
+    def test_fs_stub_is_an_alias_of_its_target(self):
+        self.fx.write("index.html", STUB.format("0;url=/en/getting-started/"))
+        self.fx.write("en/getting-started/index.html", page_html())
+        doc = self.fx.crawl()
+        self.assertEqual([p["url"] for p in doc["pages"]], ["/en/getting-started/"])
+        self.assertIn("/", doc["pages"][0]["aliases"])
+        f = audit.audit(doc)["findings"]
+        self.assertEqual([x["id"] for x in f if x["id"] in ON_PAGE and "/" in x["pages"]], [])
+
+    def test_quoted_url_and_one_second_delay_are_redirects_too(self):
+        self.fx.write("old.html", STUB.format("1; URL='/new.html'"))
+        self.fx.write("new.html", page_html())
+        doc = self.fx.crawl()
+        self.assertEqual([p["url"] for p in doc["pages"]], ["/new.html"])
+        self.assertIn("/old.html", doc["pages"][0]["aliases"])
+
+    def test_slow_refresh_is_a_page(self):
+        """A 5-second refresh shows the visitor the page first. It is a page."""
+        self.fx.write("index.html", page_html(
+            head_extra='<meta http-equiv="refresh" content="5;url=/next.html">'))
+        self.assertEqual([p["url"] for p in self.fx.crawl()["pages"]], ["/"])
+
+    def test_offsite_stub_is_skipped_not_judged(self):
+        self.fx.write("index.html", page_html())
+        self.fx.write("away.html", STUB.format("0;url=https://elsewhere.org/"))
+        self.assertEqual([p["url"] for p in self.fx.crawl()["pages"]], ["/"])
+
+    def test_http_stub_is_followed_like_a_redirect(self):
+        base = serve(self, {
+            "/": (200, "text/html", STUB.format("0;url=/en/getting-started/"), {}),
+            "/en/getting-started/": (200, "text/html", page_html(), {}),
+        })
+        doc = http_doc(base)
+        self.assertEqual([p["url"] for p in doc["pages"]], ["/en/getting-started/"])
+        page = doc["pages"][0]
+        self.assertIn("/", page["aliases"])
+        self.assertEqual(page["redirect_hops"], [base, base + "en/getting-started/"])
+        f = audit.audit(doc)["findings"]
+        self.assertEqual([x["id"] for x in f if x["id"] in ON_PAGE and "/" in x["pages"]], [])
+
+
+class TestSitemapDiscovery(Base):
+    """REGRESSION from the benchmark: only /sitemap.xml was read. astro.build declares
+    `Sitemap: https://astro.build/sitemap-index.xml` in robots.txt and was told its sitemap
+    was missing; docs.astro.build, starlight.astro.build and biomejs.dev publish
+    /sitemap-index.xml without declaring it, which is S1-ROBOTS-NO-SITEMAP, not missing."""
+
+    INDEX = ('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+             '<sitemap><loc>https://acme-widgets.com/sitemap-0.xml</loc></sitemap></sitemapindex>')
+    URLSET = ('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+              '<url><loc>https://acme-widgets.com/</loc></url></urlset>')
+
+    def _site(self, robots):
+        self.fx.write("index.html", page_html(
+            head_extra='<link rel="canonical" href="https://acme-widgets.com/">'))
+        self.fx.write("robots.txt", robots)
+        self.fx.write("sitemap-index.xml", self.INDEX)
+        self.fx.write("sitemap-0.xml", self.URLSET)
+        doc = self.fx.crawl()
+        return doc, {f["id"] for f in audit.audit(doc)["findings"]}
+
+    def test_declared_index_is_followed_to_its_urls(self):
+        doc, ids = self._site("User-agent: *\nAllow: /\n"
+                              "Sitemap: https://acme-widgets.com/sitemap-index.xml\n")
+        self.assertEqual(doc["sitemap"]["urls"], ["https://acme-widgets.com/"])
+        self.assertFalse(ids & {"S1-SITEMAP-MISSING", "S1-ROBOTS-NO-SITEMAP", "S1-SITEMAP-ORPHAN"})
+
+    def test_undeclared_index_is_robots_no_sitemap(self):
+        doc, ids = self._site("User-agent: *\nAllow: /\n")
+        self.assertTrue(doc["sitemap"]["found"])
+        self.assertIn("S1-ROBOTS-NO-SITEMAP", ids)
+        self.assertNotIn("S1-SITEMAP-MISSING", ids)
+
+    def test_http_mode_reads_the_declared_path_on_the_crawled_origin(self):
+        """tauri.app's robots.txt names v2.tauri.app's sitemap-index.xml; only the path
+        transfers, as for sitemap <loc>s."""
+        xml, txt = "application/xml", "text/plain"
+        base = serve(self, {
+            "/": (200, "text/html", page_html(), {}),
+            "/robots.txt": (200, txt, "User-agent: *\nSitemap: https://v2.acme.dev/sitemap-index.xml\n", {}),
+            "/sitemap-index.xml": (200, xml, self.INDEX, {}),
+            "/sitemap-0.xml": (200, xml, self.URLSET, {}),
+        })
+        doc = http_doc(base)
+        self.assertEqual(doc["sitemap"]["urls"], ["https://acme-widgets.com/"])
+        ids = {f["id"] for f in audit.audit(doc)["findings"]}
+        self.assertFalse(ids & {"S1-SITEMAP-MISSING", "S1-ROBOTS-NO-SITEMAP"})
+
+    def test_index_children_are_capped(self):
+        reads = []
+        index = "<sitemapindex>" + "".join(
+            "<sitemap><loc>https://a.com/s{0}.xml</loc></sitemap>".format(i)
+            for i in range(200)) + "</sitemapindex>"
+
+        def read(path):
+            reads.append(path)
+            return index if path == "/sitemap.xml" else self.URLSET
+        crawl.discover_sitemap("", read)
+        self.assertEqual(len(reads), crawl.SITEMAP_FILES_MAX)
+
+    def test_html_at_the_sitemap_path_is_not_a_sitemap(self):
+        """A catch-all route answering /sitemap.xml with the app shell is no sitemap."""
+        self.assertEqual(crawl.discover_sitemap("", lambda p: "<html><body>app</body></html>"), "")
+
+    def test_missing_files_are_calibrated(self):
+        """Google treats a 404 robots.txt as allow-all, so its absence is low; a missing
+        sitemap only slows discovery on a linked site, so medium."""
+        self.fx.write("index.html", page_html())
+        sev = {f["id"]: f["severity"] for f in self.fx.audit()["findings"]}
+        self.assertEqual(sev["S1-ROBOTS-MISSING"], "low")
+        self.assertEqual(sev["S1-SITEMAP-MISSING"], "medium")
+
+
+class TestUncrawlableBenchmark(Base):
+    """REGRESSION from the benchmark: S2-UNCRAWLABLE-LINK fired on 5 sites and 3 were
+    wrong. The 2 right ones must stay flagged."""
+
+    def _hit(self, html):
+        self.fx.write("index.html", html)
+        return [f for f in self.fx.audit()["findings"] if f["id"] == "S2-UNCRAWLABLE-LINK"]
+
+    def _main(self, body):
+        return page_html(body="<h1>H</h1><p>" + "word " * 300 + "</p>" + body)
+
+    def test_react_dev_hidden_thumbnail_is_clean(self):
+        self.assertEqual(self._hit(self._main(
+            '<article><a aria-hidden="true" tabindex="-1" target="_blank"><img src="t.jpg" alt=""></a>'
+            '<div aria-hidden="true"><p><a href="#">x</a></p></div></article>')), [])
+
+    def test_react_dev_toc_overview_is_clean(self):
+        self.assertEqual(self._hit(self._main(
+            '<ul><li><a href="#">Overview</a></li><li><a href="#install">Install</a></li></ul>')), [])
+
+    def test_tailwind_demo_in_a_figure_without_main_is_clean(self):
+        """tailwindcss.com has no <main>; its live examples sit in <figure>."""
+        html = page_html().replace("<main>", "<div>").replace("</main>", "</div>")
+        html = html.replace("</body>", '<figure><p>by <a href="#">planeteria.tech</a></p>'
+                                       '<ul><li><a href="#">Call</a></li></ul></figure></body>')
+        self.assertEqual(self._hit(html), [])
+
+    def test_shadcn_components_are_clean(self):
+        """ui.shadcn.com: pagination in a nav, a login form's "Forgot?", item cards."""
+        self.assertEqual(self._hit(self._main(
+            '<nav><ul><li><a href="#">Previous</a></li><li><a href="#">1</a></li></ul></nav>'
+            '<div><div><a href="#">Forgot?</a></div></div>'
+            '<form><p><a href="#">Forgot?</a></p></form>'
+            '<a href="#" data-slot="item">Danger Zone</a>')), [])
+
+    def test_placeholder_links_in_docs_text_stay_flagged(self):
+        """pnpm.io: "ignored by the [pnpm audit](#) command"; jestjs.io: "your Jest
+        [config file](#)". Both are <a href="#"> in a docs paragraph or list item."""
+        for body in ('<article><p>ignored by the <a href="#"><code>pnpm audit</code></a> command</p></article>',
+                     '<article><ul><li>your Jest <a href="#">config file</a></li></ul></article>'):
+            with self.subTest(body=body):
+                self.assertEqual(len(self._hit(self._main(body))), 1)
+
+    def test_no_main_body_prose_is_still_checked(self):
+        html = page_html(body='<h1>H</h1><p>see <a href="#">the guide</a></p>')
+        html = html.replace("<main>", "<div>").replace("</main>", "</div>")
+        self.assertEqual(len(self._hit(html)), 1)
+
+    def test_evidence_shows_the_triggering_attribute(self):
+        """The 120-character cut used to end inside a utility-class list, before href."""
+        hit = self._hit(self._main('<p><a class="{0}" data-x="1" href="#">config file</a></p>'
+                                   .format("text-link " * 30)))
+        self.assertEqual(hit[0]["evidence"], '<a data-x="1" href="#">config file</a>')
+
+
+class TestHostAgreement(Base):
+    """REGRESSION from the benchmark: tauri.app serves the site, and every URL it
+    publishes (canonical, og:url, sitemap, robots) names v2.tauri.app, which also serves
+    it. That is a deliberate canonical host, not a leak: one medium finding asking for a
+    redirect, instead of a high mismatch plus a critical CANONICAL-OFFSITE per page."""
+
+    def _audit(self, host):
+        url = "https://{0}/".format(host)
+        self.fx.write("index.html", page_html(head_extra=(
+            '<link rel="canonical" href="{0}"><meta property="og:url" content="{0}">').format(url)))
+        self.fx.write("sitemap.xml", "<urlset><url><loc>{0}</loc></url></urlset>".format(url))
+        self.fx.write("robots.txt", "User-agent: *\nSitemap: {0}sitemap.xml\n".format(url))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = "https://acme-widgets.com"
+        return audit.audit(doc)["findings"]
+
+    def test_every_url_naming_one_other_host_is_medium(self):
+        f = self._audit("v2.acme-widgets.com")
+        hit = [x for x in f if x["id"] == "S1-HOST-MISMATCH"]
+        self.assertEqual([x["severity"] for x in hit], ["medium"])
+        self.assertEqual(hit[0]["message"],
+                         "Served on acme-widgets.com, but every URL names v2.acme-widgets.com; "
+                         "check acme-widgets.com redirects to v2.acme-widgets.com.")
+        self.assertNotIn("S1-CANONICAL-OFFSITE", [x["id"] for x in f])
+
+    def test_agreeing_on_a_preview_host_stays_critical(self):
+        f = self._audit("acme-git-main.vercel.app")
+        self.assertEqual([x["severity"] for x in f if x["id"] == "S1-HOST-MISMATCH"], ["critical"])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

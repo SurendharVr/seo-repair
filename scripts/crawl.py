@@ -17,7 +17,7 @@ import re
 import secrets
 import sys
 from collections import deque
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -220,6 +220,10 @@ def extract_page(url, html, soup=None):
 
 NAV_JS_RE = re.compile(r"location(\.href)?\s*=|location\.(assign|replace)\s*\(|window\.open\s*\(", re.I)
 TOGGLE_ATTRS = ("aria-expanded", "aria-controls", "aria-haspopup", "data-toggle", "data-bs-toggle")
+# Where a placeholder href="#" is a writer's mistake rather than UI: running text.
+PROSE_TAGS = ("p", "li", "td", "dd")
+# Inside these, a "#" link is a widget: pagination, a demo component, a login form.
+NOT_PROSE_TAGS = ("nav", "figure", "form")
 
 
 def uncrawlable_links(soup):
@@ -229,14 +233,47 @@ def uncrawlable_links(soup):
     breadcrumb or pagination has none, legitimately); it counts only when it is wired up
     as a click target (onclick or tabindex). href="#" is skipped on menu toggles and
     "back to top" links, which are not navigation at all.
+
+    A bare href="#" (no onclick) counts only in prose: a <p>, <li>, <td> or <dd> inside
+    <main>/<article> (or anywhere in the body when there is neither), and not inside a
+    nav, figure or form. Docs sites render live demo components (mock pagination, login
+    forms, cards) full of href="#" (tailwindcss.com, ui.shadcn.com), and a table of
+    contents points its first entry at "#" (react.dev). "your Jest [config file](#)" in a
+    docs paragraph is the defect this is for. Hidden elements (aria-hidden, tabindex=-1)
+    are decorative duplicates of a real link and are skipped too.
     """
     out = []
+    scoped = soup.find(["main", "article"]) or soup.find(attrs={"role": "main"})
 
     def snip(el):
-        return re.sub(r"\s+", " ", str(el))[:120]
+        # The opening tag minus class (utility-CSS sites bury the triggering attribute
+        # behind hundreds of characters of it), plus the text.
+        attrs = "".join(' {0}="{1}"'.format(k, " ".join(v) if isinstance(v, list) else v)
+                        for k, v in el.attrs.items() if k != "class")
+        text = S.normalize_text(el.get_text(" "))[:80]
+        return "<{0}{1}>{2}</{0}>".format(el.name, attrs, text)[:200]
+
+    def hidden(el):
+        return (el.get("tabindex") == "-1"
+                or el.find_parent(attrs={"aria-hidden": "true"}) is not None
+                or el.get("aria-hidden") == "true")
+
+    def in_prose(el):
+        if el.find_parent(PROSE_TAGS) is None or el.find_parent(NOT_PROSE_TAGS) is not None:
+            return False
+        return not scoped or el.find_parent(
+            lambda t: t.name in ("main", "article") or t.get("role") == "main") is not None
+
+    def in_toc(el):
+        # Sibling links in the same list or nav are #fragments: "Overview" at the top of
+        # an "On this page" list scrolls to the top.
+        box = el.find_parent(["ul", "ol", "nav"])
+        return box is not None and any(
+            (o.get("href") or "").startswith("#") and len(o.get("href")) > 1
+            for o in box.find_all("a") if o is not el)
 
     for a in soup.find_all("a"):
-        if a.get("role") == "button" or any(a.has_attr(x) for x in TOGGLE_ATTRS):
+        if a.get("role") == "button" or any(a.has_attr(x) for x in TOGGLE_ATTRS) or hidden(a):
             continue
         href = a.get("href")
         h = (href or "").strip().lower()
@@ -246,11 +283,29 @@ def uncrawlable_links(soup):
         elif h.startswith("javascript:"):
             out.append(snip(a))
         elif h == "#" and not re.search(r"\btop\b", a.get_text(), re.I):
-            out.append(snip(a))
+            if a.has_attr("onclick") or (in_prose(a) and not in_toc(a)):
+                out.append(snip(a))
     for el in soup.find_all(onclick=NAV_JS_RE):
-        if el.name != "a":
+        if el.name != "a" and not hidden(el):
             out.append(snip(el))
     return out
+
+
+REFRESH_RE = re.compile(r"\s*(\d+(?:\.\d*)?)\s*(?:[;,]\s*(?:url\s*=\s*)?(.*))?$", re.I | re.S)
+
+
+def refresh_target(html):
+    """The URL a <meta http-equiv="refresh"> sends the visitor to at once (delay 0 or 1),
+    or None. Such a page is a redirect, not a page: docs.astro.build's home is one, and
+    judging it as a page reported a missing title, viewport, H1 and the rest."""
+    if not re.search(r"http-equiv\s*=\s*['\"]?refresh", html or "", re.I):
+        return None
+    tag = BeautifulSoup(html, "lxml").find(
+        "meta", attrs={"http-equiv": re.compile("^refresh$", re.I)})
+    m = REFRESH_RE.match((tag.get("content") or "") if tag else "")
+    if not m or float(m.group(1)) > 1:
+        return None
+    return (m.group(2) or "").strip().strip("'\"").strip() or None
 
 
 def srcset_urls(value):
@@ -349,6 +404,7 @@ def crawl_fs(root, base_url=None):
     root = os.path.abspath(root)
     pages, assets = [], []
     skipped = []
+    stubs = []   # (file, its aliases, the path its meta refresh sends visitors to)
 
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in S.EXCLUDE_DIRS and not d.startswith(".")]
@@ -364,6 +420,16 @@ def crawl_fs(root, base_url=None):
                     html = read_text(full)
                 except Exception as e:
                     skipped.append({"file": rel, "reason": str(e)[:200]})
+                    continue
+                target = refresh_target(html)
+                if target:
+                    kind, resolved = S.resolve_href(url, target)
+                    if kind == "absolute" and base_url and urlsplit(target).netloc == urlsplit(base_url).netloc:
+                        kind, resolved = "internal", S.norm_path(urlsplit(target).path)
+                    if kind == "internal":
+                        stubs.append((rel, aliases, resolved))
+                    else:
+                        skipped.append({"file": rel, "reason": "meta refresh off-site to " + target})
                     continue
                 rec = extract_page(url, html)
                 rec["file"] = rel
@@ -385,14 +451,26 @@ def crawl_fs(root, base_url=None):
             n = sum(len(f) for _, _, f in os.walk(p))
             excluded_present.append({"dir": d, "files": n})
 
+    # Redirect stubs become aliases of the page they send visitors to.
+    for rel, aliases, target in stubs:
+        page = next((p for p in pages if target in p["aliases"]), None)
+        if page:
+            page["aliases"] = sorted(set(page["aliases"]) | set(aliases))
+        else:
+            skipped.append({"file": rel, "reason": "meta refresh to " + target + ", not a page here"})
+
     robots_txt = ""
     rp = os.path.join(root, "robots.txt")
     if os.path.isfile(rp):
         robots_txt = read_text(rp)
-    sitemap_xml = ""
-    sp = os.path.join(root, "sitemap.xml")
-    if os.path.isfile(sp):
-        sitemap_xml = read_text(sp)
+
+    def read_site_file(path):
+        if ".." in path.split("/"):
+            return ""
+        fp = os.path.join(root, path.lstrip("/").replace("/", os.sep))
+        return read_text(fp) if os.path.isfile(fp) else ""
+
+    sitemap_xml = discover_sitemap(robots_txt, read_site_file)
 
     extras = {}
     for name in ("llms.txt", "_headers", "_redirects", "netlify.toml", "vercel.json", ".htaccess"):
@@ -426,22 +504,66 @@ def crawl_fs(root, base_url=None):
 
 # ----------------------------------------------------------------- http mode
 
+SITEMAP_FILES_MAX = 50   # sitemap files read per site, index children included
+
+
+def is_sitemap(text):
+    low = (text or "").lower()
+    return "<urlset" in low or "<sitemapindex" in low
+
+
+def discover_sitemap(robots_txt, read, cap=SITEMAP_FILES_MAX):
+    """Every <url> the site's sitemaps list, as one blob for parse_sitemap and
+    parse_sitemap_lastmods (both regex over the text, so concatenated files read fine).
+
+    Where a search engine looks: the robots.txt Sitemap: lines, else /sitemap.xml, else
+    /sitemap-index.xml (Astro's default, undeclared on docs.astro.build, starlight and
+    biomejs.dev). <sitemapindex> files are followed to their children. A declared URL
+    contributes its path only, read from the origin being audited, as sitemap <loc>s do.
+    read(path) returns the file's text or "". Shared by fs and http mode.
+    """
+    declared = [S.norm_path(urlsplit(u).path) for u in S.Robots(robots_txt).sitemaps]
+    roots = []
+    for group in (declared, ["/sitemap.xml"], ["/sitemap-index.xml"]):
+        roots = [(p, t) for p, t in ((p, read(p)) for p in dict.fromkeys(group)) if is_sitemap(t)]
+        if roots:
+            break
+    seen = {p for p, _ in roots}
+    queue, urlsets = deque(roots), []
+    while queue:
+        _, text = queue.popleft()
+        if "<sitemapindex" not in text.lower():
+            urlsets.append(text)
+            continue
+        for loc in S.parse_sitemap(text)[0]:
+            child = S.norm_path(urlsplit(loc).path)
+            if child in seen or len(seen) >= cap:
+                continue
+            seen.add(child)
+            t = read(child)
+            if is_sitemap(t):
+                queue.append((child, t))
+    # An index whose children are all unreadable is still a sitemap the site publishes.
+    return "\n".join(urlsets or [t for _, t in roots])
+
+
 def fetch_site_files(sess, origin, timeout):
-    """robots.txt and sitemap.xml, fetched before the walk because the sitemap seeds it."""
-    robots_txt = sitemap_xml = ""
+    """robots.txt and the sitemap, fetched before the walk because the sitemap seeds it."""
+    def get(path):
+        try:
+            r = sess.get(origin + path, timeout=timeout)
+            return r.text if r.status_code == 200 else ""
+        except Exception:
+            return ""
+
+    robots_txt = ""
     try:
         rr = sess.get(origin + "/robots.txt", timeout=timeout)
         if rr.status_code == 200 and "html" not in rr.headers.get("Content-Type", "").lower():
             robots_txt = rr.text
     except Exception:
         pass
-    try:
-        sr = sess.get(origin + "/sitemap.xml", timeout=timeout)
-        if sr.status_code == 200:
-            sitemap_xml = sr.text
-    except Exception:
-        pass
-    return robots_txt, sitemap_xml
+    return robots_txt, discover_sitemap(robots_txt, get)
 
 
 def probe_soft404(start, timeout=20):
@@ -549,6 +671,25 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
                     continue
                 seen.add(target)
                 path = target
+
+        refresh = refresh_target(r.text)
+        if refresh:
+            # A meta-refresh stub is a redirect: its path becomes an alias of the target,
+            # and the refresh is one more hop. Never recorded as a page of its own.
+            dest = urlsplit(urljoin(r.url, refresh))
+            if "{0}://{1}".format(dest.scheme, dest.netloc) != origin:
+                skipped.append({"url": path, "reason": "meta refresh off-site to " + dest.geturl()})
+                continue
+            target = S.canonical_http_path(dest.path or "/")
+            if target != path:
+                redirect_aliases.setdefault(target, set()).update(
+                    {path} | redirect_aliases.pop(path, set()))
+                hops = (chains.pop(path, None) or [r.url]) + [origin + target]
+                if len(hops) > len(chains.get(target, ())):
+                    chains[target] = hops
+                if target not in seen:
+                    queue.appendleft(target)
+                continue
 
         html, raw, render_error = r.text, None, None
         if chrome and r.status_code == 200 and rendered < render_limit:

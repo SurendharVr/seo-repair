@@ -153,7 +153,8 @@ not "make it pass".
   content.
 - **http** — crawls a running dev server or live URL for real status codes and
   redirects. Use this when indexability or redirect behaviour is the question. The
-  frontier is seeded from `sitemap.xml` as well as `--start`, so a page the sitemap
+  frontier is seeded from the sitemap (robots.txt `Sitemap:` lines, else `/sitemap.xml`,
+  else `/sitemap-index.xml`, indexes followed) as well as `--start`, so a page the sitemap
   lists but nothing links to is still fetched; URLs that 404 are recorded as skipped
   rather than admitted as pages, which is what keeps `S1-SITEMAP-ORPHAN` and
   `S1-BROKEN-LINK` meaningful. A page that is neither linked nor listed is unreachable

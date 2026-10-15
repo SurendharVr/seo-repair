@@ -175,13 +175,15 @@ def audit(doc, vitals=None, schema_findings=None):
 
     # ---------------------------------------------------------- STAGE 1: index
     if not doc["robots"]["found"]:
-        out.append(finding("S1-ROBOTS-MISSING", 1, "high",
+        # low: Google treats a robots.txt that 404s as "crawl everything".
+        out.append(finding("S1-ROBOTS-MISSING", 1, "low",
                            "No robots.txt found at site root.", ["/"],
                            evidence="robots.txt absent", recipe="robots-create"))
     if not doc["sitemap"]["found"]:
-        out.append(finding("S1-SITEMAP-MISSING", 1, "high",
-                           "No sitemap.xml found at site root.", ["/"],
-                           evidence="sitemap.xml absent", recipe="sitemap-create"))
+        out.append(finding("S1-SITEMAP-MISSING", 1, "medium",
+                           "No sitemap found: none declared in robots.txt, none at "
+                           "/sitemap.xml or /sitemap-index.xml.", ["/"],
+                           evidence="sitemap absent", recipe="sitemap-create"))
     elif doc["robots"]["found"] and not doc["robots"]["sitemaps"]:
         out.append(finding("S1-ROBOTS-NO-SITEMAP", 1, "medium",
                            "robots.txt does not declare a Sitemap: line.", ["/"],
@@ -305,12 +307,29 @@ def audit(doc, vitals=None, schema_findings=None):
         parts = (["base URL " + base_host] if base_host else []) + [
             "{0}: {1}".format(label, ", ".join("{0} ({1})".format(h, n) for h, n in sorted(hs.items())))
             for label, hs in seen_hosts.items()]
-        out.append(finding("S1-HOST-MISMATCH", 1, "critical" if preview else "high",
-                           "The site's own URLs name {0} different hosts{1}.".format(
-                               len(all_hosts),
-                               ", including preview host " + ", ".join(preview) if preview else ""),
-                           sorted(off_pages) or ["/"], evidence="; ".join(parts),
-                           recipe="domain-fix", detail={"hosts": sorted(all_hosts)}))
+        published = all_hosts - {base_host}
+        if base_host and len(published) == 1 and not preview and not any(
+                base_host in hs for hs in seen_hosts.values()):
+            # Every published URL agrees on one host and only the crawled host differs
+            # (tauri.app, whose canonicals, og:url, sitemap and robots all name
+            # v2.tauri.app). That is a deliberate canonical host; the one thing to check
+            # is that the crawled host redirects there. The per-page CANONICAL-OFFSITE
+            # findings say the same thing 50 times at critical, so they fold into this.
+            other = next(iter(published))
+            out[:] = [f for f in out if not (f["id"] == "S1-CANONICAL-OFFSITE"
+                                             and urlsplit(f["evidence"]).hostname == other)]
+            out.append(finding("S1-HOST-MISMATCH", 1, "medium",
+                               "Served on {0}, but every URL names {1}; check {0} redirects to {1}."
+                               .format(base_host, other),
+                               sorted(off_pages) or ["/"], evidence="; ".join(parts),
+                               recipe="domain-fix", detail={"hosts": sorted(all_hosts)}))
+        else:
+            out.append(finding("S1-HOST-MISMATCH", 1, "critical" if preview else "high",
+                               "The site's own URLs name {0} different hosts{1}.".format(
+                                   len(all_hosts),
+                                   ", including preview host " + ", ".join(preview) if preview else ""),
+                               sorted(off_pages) or ["/"], evidence="; ".join(parts),
+                               recipe="domain-fix", detail={"hosts": sorted(all_hosts)}))
 
     # broken internal links
     broken = defaultdict(list)
