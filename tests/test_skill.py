@@ -2043,6 +2043,47 @@ def http_doc(base):
             "referenced_assets": [], "referenced_basenames": []}
 
 
+class TestHttpStartRedirect(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: a start URL redirecting to another host
+    (apex -> www, http -> https) skipped every page as off-site, crawl.py exited 0 with 0
+    pages, and every sitemap URL was reported as not existing."""
+
+    def _sites(self):
+        target = serve(self, {
+            "/": (200, "text/html", page_html(
+                body='<h1>H</h1><p><a href="/about/">a</a> ' + "word " * 300 + "</p>"), {}),
+            "/about/": (200, "text/html", page_html(title="About Page With A Fine Long Title"), {}),
+        })
+        apex = serve(self, {"/": (301, "text/html", "", {"Location": target})})
+        return apex, target
+
+    def test_crawl_follows_the_start_redirect(self):
+        apex, _ = self._sites()
+        pages = crawl.crawl_http(apex)[0]
+        self.assertEqual(sorted(p["url"] for p in pages), ["/", "/about/"])
+
+    def test_base_url_repeating_the_typed_origin_follows_it(self):
+        apex, target = self._sites()
+        d = tempfile.mkdtemp(prefix="sitemend-redir-")
+        self.addCleanup(shutil.rmtree, d, True)
+        out = os.path.join(d, "crawl.json")
+        subprocess.run([sys.executable, os.path.join(sitemend.HERE, "crawl.py"), "--mode", "http",
+                        "--start", apex, "--base-url", apex.rstrip("/"), "--out", out],
+                       capture_output=True, check=True)
+        with open(out, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["meta"]["base_url"], target.rstrip("/"))
+
+    def test_zero_pages_is_an_error_not_an_empty_audit(self):
+        dead = serve(self, {})
+        d = tempfile.mkdtemp(prefix="sitemend-dead-")
+        self.addCleanup(shutil.rmtree, d, True)
+        r = subprocess.run([sys.executable, os.path.join(sitemend.HERE, "crawl.py"), "--mode", "http",
+                            "--start", dead, "--out", os.path.join(d, "crawl.json")],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("crawled 0 pages", r.stderr)
+
+
 STUB = ('<!doctype html><html><head><meta http-equiv="refresh" content="{0}">'
         '</head><body></body></html>')
 ON_PAGE = {"S3-TITLE-MISSING", "S3-VIEWPORT-MISSING", "S2-H1-MISSING", "S3-DESC-MISSING",

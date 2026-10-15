@@ -624,6 +624,15 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
 
     sess = requests.Session()
     sess.headers["User-Agent"] = "sitemend-crawler/1.0 (+local audit)"
+    # Crawl the origin the start URL lands on. apex -> www and http -> https are how a
+    # site is served, not off-site links: taking the typed origin skipped every page as
+    # "redirects off-site" and the crawl came back empty.
+    try:
+        landed = sess.get(start, timeout=timeout, allow_redirects=True, stream=True)
+        landed.close()
+        start = landed.url
+    except Exception:
+        pass
     origin = "{0}://{1}".format(*urlsplit(start)[:2])
 
     # The sitemap is fetched first because it seeds the frontier. A pure link walk cannot
@@ -785,7 +794,6 @@ def main():
         (pages, assets, robots_txt, sitemap_xml, extras, excluded,
          skipped, refs, names) = crawl_fs(args.root, args.base_url)
         source = os.path.abspath(args.root)
-        soft404 = None
     else:
         if not args.start:
             ap.error("--start is required in http mode")
@@ -793,7 +801,18 @@ def main():
          skipped, refs, names) = crawl_http(args.start, args.max_pages, render=args.render,
                                   render_limit=args.render_limit)
         source = args.start
-        soft404 = probe_soft404(args.start)
+
+    if not pages:
+        reason = skipped[0]["reason"] if skipped else "no HTML pages found"
+        print("ERROR: crawled 0 pages from {0} ({1}). Nothing to audit.".format(source, reason),
+              file=sys.stderr)
+        return 1
+    soft404 = probe_soft404(pages[0]["final_url"]) if args.mode == "http" else None
+    if args.mode == "http" and args.base_url and audit.same_origin(args.base_url, args.start):
+        # A start URL that redirected is crawled where it landed (crawl_http), and a
+        # --base-url that only repeats the typed origin (as sitemend.py passes) follows it.
+        landed = urlsplit(pages[0]["final_url"])
+        args.base_url = "{0}://{1}".format(landed.scheme, landed.netloc)
 
     robots = S.Robots(robots_txt)
     sm_urls, sm_errs = S.parse_sitemap(sitemap_xml)
