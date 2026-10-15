@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+**False positives found by a 20-site benchmark, fixed.** sitemend 1.4.0 was run against
+20 open-source framework and docs sites and every finding was checked by hand. These
+were wrong or overstated:
+
+- **Meta-refresh stubs were judged as pages.** docs.astro.build's home is
+  `<meta http-equiv="refresh" content="0;url=/en/getting-started/">`: it got a critical
+  missing title and viewport plus H1, description, canonical, lang and OG findings, and
+  the http crawl stopped at 1 page. A refresh with a delay of 0 or 1 is now a redirect:
+  followed in http mode (alias plus one redirect hop), an alias of its target in fs mode,
+  and never judged as a page.
+- **Sitemaps declared in robots.txt were reported missing.** Discovery now reads the
+  robots.txt `Sitemap:` URLs (path only, on the audited origin), then `/sitemap.xml`,
+  then `/sitemap-index.xml`, and follows `<sitemapindex>` children (up to 50 files), in
+  fs and http mode. A sitemap that exists but is not declared is `S1-ROBOTS-NO-SITEMAP`,
+  not `S1-SITEMAP-MISSING` (astro.build, docs.astro.build, starlight.astro.build,
+  biomejs.dev). A file without `<urlset>` or `<sitemapindex>` is not a sitemap.
+- **`S2-UNCRAWLABLE-LINK` was wrong on 3 of the 5 sites it flagged.** Elements with
+  `aria-hidden="true"` or `tabindex="-1"` are skipped (react.dev); so is a `#` entry in a
+  list whose other links are `#fragment`s, a table of contents (react.dev). A bare
+  `href="#"` without `onclick` now counts only in prose (`p`, `li`, `td`, `dd` in
+  `main`/`article`, or the body when there is neither), not inside `nav`, `figure` or
+  `form`, which keeps demo components out (tailwindcss.com, ui.shadcn.com). The two real
+  hits stay flagged (pnpm.io, jestjs.io). Evidence is now the opening tag without `class`
+  plus the link text, so the triggering attribute is visible.
+- **`S1-HOST-MISMATCH` on a deliberate canonical host.** When every published URL agrees
+  on one host and only the crawled host differs (tauri.app, whose URLs all name
+  v2.tauri.app), it is one medium finding, "served on X, but every URL names Y; check X
+  redirects to Y", and the per-page critical `S1-CANONICAL-OFFSITE` findings fold into
+  it. It stays critical when that host is a preview host.
+- **Severities.** `S1-ROBOTS-MISSING` high → low (Google treats a 404 robots.txt as
+  allow-all); `S1-SITEMAP-MISSING` high → medium.
+
 ## 1.4.0 - 2026-10-15
 
 Three checks for deploys that break SEO:

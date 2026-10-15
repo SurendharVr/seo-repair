@@ -51,6 +51,8 @@ For `S1-HOST-MISMATCH` the usual cause is a build-time URL variable (`NEXT_PUBLI
 `VERCEL_URL` on Vercel) that holds the preview host in the production build. Set it from
 one production value and leave it unset for previews, rather than editing generated files.
 Pick www or the apex once and redirect the other.
+When the finding is medium ("served on X, but every URL names Y"), the URLs are already
+consistent: the fix is a permanent redirect from X to Y at the host, not an edit to them.
 
 ### `broken-link-fix` — safe
 Repoint to the correct URL, or remove the link. Check `detail.refs` for every source
