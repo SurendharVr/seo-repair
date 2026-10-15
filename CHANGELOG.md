@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1 - 2026-10-15
 
 **False positives found by a 20-site benchmark, fixed.** sitemend 1.4.0 was run against
 20 open-source framework and docs sites and every finding was checked by hand. These
@@ -33,6 +33,8 @@ were wrong or overstated:
   it. It stays critical when that host is a preview host.
 - **Severities.** `S1-ROBOTS-MISSING` high → low (Google treats a 404 robots.txt as
   allow-all); `S1-SITEMAP-MISSING` high → medium.
+
+The example GitHub Action now pins `sitemend==1.4.1`, so a copied workflow gets these fixes.
 
 ## 1.4.0 - 2026-10-15
 
