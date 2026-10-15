@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **A preview host in the whole sitemap no longer becomes the base URL.** fs mode infers
+  the production origin when `--base-url` is not given, and took the first sitemap URL.
+  A deploy that leaks `*.vercel.app` into every sitemap entry while its canonicals still
+  name production got the preview as its base, and every correct canonical was reported
+  as critical `S1-CANONICAL-OFFSITE`. Inference now skips preview and placeholder hosts
+  in favour of the canonical or robots.txt `Sitemap:` origin, falling back to the first
+  URL when nothing else is on offer. The leak itself is still the critical
+  `S1-HOST-MISMATCH`.
+
 ## 1.4.1 - 2026-10-15
 
 **False positives found by a 20-site benchmark, fixed.** sitemend 1.4.0 was run against
