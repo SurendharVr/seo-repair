@@ -19,6 +19,8 @@ Reference for interpreting findings. Fixes live in `fix-recipes.md`.
 | `S1-CANONICAL-CROSS` | Canonical points at a different page | high — may be deliberate; ask |
 | `S1-CANONICAL-BROKEN` / `-OFFSITE` | Canonical points to a non-existent URL or another origin (scheme and host compared, not a string prefix) | critical |
 | `S1-PLACEHOLDER-DOMAIN` | Canonicals, `og:url`, sitemap URLs or a robots `Sitemap:` line use a placeholder origin (example.com/.org/.net, `localhost`, `.test` and the like) | high — the base origin is inferred from these same URLs, so a uniformly wrong site looks consistent to every other check |
+| `S1-HOST-MISMATCH` | Canonicals, `og:url`, sitemap `<loc>`s, the robots `Sitemap:` line and the base URL do not all name one host (a `*.vercel.app` / `*.netlify.app` preview host in a production build, or www against the apex). Hosts are compared, not schemes. A base URL on localhost or a preview host (an http crawl of a dev server or a preview deploy) is left out, so correct production URLs there are not reported; placeholder hosts are left to `S1-PLACEHOLDER-DOMAIN`, and canonicals alone on another origin to `S1-CANONICAL-OFFSITE` | **critical** when one of the hosts is a hosting platform's preview host that differs from the base URL, otherwise high |
+| `S1-SOFT-404` | http mode only: one random path that cannot exist (`/sitemend-404-probe-…`) answered 200, directly or after a redirect | high — every mistyped or deleted URL becomes an indexable copy of the error page |
 | `S1-BROKEN-LINK` | Internal link to a URL that doesn't exist | high |
 | `S1-URL-UNCLEAN` | Uppercase, underscores, or spaces in a URL | medium |
 | `S1-URL-MIXED-CONVENTION` | Site mixes `/page` and `/page.html` | medium, low confidence |
@@ -37,6 +39,11 @@ Reference for interpreting findings. Fixes live in `fix-recipes.md`.
 | `S1-JS-HEAD-MISMATCH` | `--render` only: the canonical or the `noindex` directive differs between raw HTML and the rendered DOM | high — two different answers to "may this be indexed, and as what" |
 
 Pagination (`rel=next/prev`) is deliberately not checked: Google stopped using it.
+
+**`X-Robots-Tag: noindex`** is read from response headers in an http crawl and counts
+as a `noindex` like the meta tag, so on the production homepage it is the critical
+`S1-NOT-INDEXABLE` (or `S1-INDEX-CONTRADICTION` when the sitemap lists it). Preview
+deploys send this header by design; it matters when the crawled URL is production.
 
 **Deliberate exclusions.** A `noindex` on a 404, or on a page also disallowed in
 robots.txt, is a decision. Reported separately as a confirmation, never as a defect.
@@ -58,6 +65,7 @@ request. Without `--render`, `S1-JS-SHELL` is the only hint.
 | `S2-UNREACHABLE` | No path from the homepage by following links. Stronger than orphan. |
 | `S2-LOW-INLINKS` | Exactly one inbound link. Weak signal for a page that matters. |
 | `S2-DEEP` | More than 3 clicks from home. Depth correlates with reduced crawl frequency. |
+| `S2-UNCRAWLABLE-LINK` | Navigation with no URL a crawler can follow: `<a href="#">`, `<a href="javascript:…">`, an `<a>` with no `href` but an `onclick` or `tabindex`, or a `<div>`/`<button>` whose `onclick` sets `location`. Menu toggles (`role="button"`, `aria-expanded`, `aria-controls`, `aria-haspopup`, `data-toggle`), "back to top" links and a bare `<a>` with no handler (the current crumb in a breadcrumb) are not reported. Medium, medium confidence. |
 | `S2-H1-MISSING` / `-MULTIPLE` | No H1, or several competing ones. |
 | `S2-HEADING-SKIP` | Level jumps (H3→H5). Accessibility issue first, structure signal second. |
 | `S2-BREADCRUMB-MISSING` | No `BreadcrumbList` on a non-home page. |

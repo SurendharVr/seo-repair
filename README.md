@@ -33,6 +33,9 @@ Formerly `seo-repair`; the old GitHub URL redirects here.
 | What went wrong | Finding |
 | --- | --- |
 | The canonical or sitemap points at `localhost`, `example.com` or another page | `S1-PLACEHOLDER-DOMAIN`, `S1-CANONICAL-CROSS`, `S1-CANONICAL-OFFSITE` |
+| A preview deploy's host (`*.vercel.app`, `*.netlify.app`) leaked into the production canonicals, `og:url` or sitemap | `S1-HOST-MISMATCH` (critical) |
+| Missing URLs answer 200 instead of 404 (an SPA catch-all, a redirect to home) | `S1-SOFT-404` (http mode) |
+| Navigation became `href="#"`, `javascript:` or an `onclick` with no link a crawler can follow | `S2-UNCRAWLABLE-LINK` |
 | A page is listed in the sitemap but blocked by `noindex` or `robots.txt` | `S1-INDEX-CONTRADICTION` (critical) |
 | Content only appears after JavaScript runs, so crawlers that don't render it see an empty page | `S1-JS-SHELL`; with `--render`, `S1-JS-DEPENDENT` and `S1-JS-HEAD-MISMATCH` |
 | A redesign orphaned pages or broke internal links | `S2-ORPHAN`, `S1-BROKEN-LINK` |
@@ -233,8 +236,8 @@ refuses without a named, approved batch.
 
 | Stage | Checks |
 | --- | --- |
-| **Crawling & indexing** | `robots.txt` rules, XML sitemap coverage and contradictions, `noindex` directives, canonical tags (missing, cross-page, broken, off-origin), placeholder domains (example.com, localhost) in canonicals and the sitemap, broken internal links, URL hygiene, redirect chains and loops, mixed content, `hreflang` (invalid codes, broken targets, missing self and return tags), sitemap `<lastmod>` validity, response security headers, and client-rendered shells (`--render` compares raw HTML to the rendered DOM) |
-| **Site architecture** | Orphan pages, unreachable pages, click depth, internal link distribution, heading structure, breadcrumbs |
+| **Crawling & indexing** | `robots.txt` rules, XML sitemap coverage and contradictions, `noindex` directives, canonical tags (missing, cross-page, broken, off-origin), placeholder domains (example.com, localhost) in canonicals and the sitemap, mismatched hosts across canonicals, `og:url`, the sitemap and robots.txt (a preview host leaking into production), soft 404s (http mode), broken internal links, URL hygiene, redirect chains and loops, mixed content, `hreflang` (invalid codes, broken targets, missing self and return tags), sitemap `<lastmod>` validity, response security headers, and client-rendered shells (`--render` compares raw HTML to the rendered DOM) |
+| **Site architecture** | Orphan pages, unreachable pages, click depth, internal link distribution, links a crawler cannot follow (`href="#"`, `javascript:`, `onclick` navigation), heading structure, breadcrumbs |
 | **Content & on-page** | Duplicate and near-duplicate content (MinHash), keyword cannibalization, thin content, title tags, meta descriptions, Open Graph tags, image alt text, oversized images, unused assets |
 | **Core Web Vitals** | Lighthouse LCP, CLS and TBT — reported as *lab* metrics, with the localhost caveat stated |
 | **Schema markup** | JSON-LD validity, required and recommended properties, and whether the markup's claims are corroborated by visible page text |

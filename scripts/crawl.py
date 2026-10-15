@@ -14,6 +14,7 @@ import datetime
 import json
 import os
 import re
+import secrets
 import sys
 from collections import deque
 from urllib.parse import urlsplit
@@ -165,6 +166,8 @@ def extract_page(url, html, soup=None):
         for i in ("root", "app", "__next", "__nuxt", "___gatsby", "svelte"))
     js_shell = mount_empty and len(full_text.split()) < 30
 
+    uncrawlable = uncrawlable_links(soup)
+
     og = {}
     for t in soup.find_all("meta", attrs={"property": re.compile("^og:", re.I)}):
         og[t.get("property").lower()] = (t.get("content") or "").strip()
@@ -199,6 +202,7 @@ def extract_page(url, html, soup=None):
         "hreflang": hreflang,
         "insecure_refs": insecure[:20],
         "js_shell": js_shell,
+        "uncrawlable_links": uncrawlable[:20],
         "og": og,
         "twitter": tw,
         "html_bytes": len(html.encode("utf-8", "replace")),
@@ -212,6 +216,41 @@ def extract_page(url, html, soup=None):
             if l["kind"] == "nonhttp" and l["href"]
             and l["href"].lower().startswith(("tel:", "mailto:")))),
     }
+
+
+NAV_JS_RE = re.compile(r"location(\.href)?\s*=|location\.(assign|replace)\s*\(|window\.open\s*\(", re.I)
+TOGGLE_ATTRS = ("aria-expanded", "aria-controls", "aria-haspopup", "data-toggle", "data-bs-toggle")
+
+
+def uncrawlable_links(soup):
+    """Navigation a crawler cannot follow, because there is no real URL in an href.
+
+    Conservative on purpose. A bare <a> with no href is skipped (the current item in a
+    breadcrumb or pagination has none, legitimately); it counts only when it is wired up
+    as a click target (onclick or tabindex). href="#" is skipped on menu toggles and
+    "back to top" links, which are not navigation at all.
+    """
+    out = []
+
+    def snip(el):
+        return re.sub(r"\s+", " ", str(el))[:120]
+
+    for a in soup.find_all("a"):
+        if a.get("role") == "button" or any(a.has_attr(x) for x in TOGGLE_ATTRS):
+            continue
+        href = a.get("href")
+        h = (href or "").strip().lower()
+        if href is None:
+            if a.has_attr("onclick") or a.has_attr("tabindex"):
+                out.append(snip(a))
+        elif h.startswith("javascript:"):
+            out.append(snip(a))
+        elif h == "#" and not re.search(r"\btop\b", a.get_text(), re.I):
+            out.append(snip(a))
+    for el in soup.find_all(onclick=NAV_JS_RE):
+        if el.name != "a":
+            out.append(snip(el))
+    return out
 
 
 def srcset_urls(value):
@@ -405,6 +444,23 @@ def fetch_site_files(sess, origin, timeout):
     return robots_txt, sitemap_xml
 
 
+def probe_soft404(start, timeout=20):
+    """Request one path that cannot exist. A site that answers it with 200 serves
+    "not found" as a real page, and every mistyped or deleted URL becomes an indexable
+    duplicate of the error page."""
+    import requests
+
+    origin = "{0}://{1}".format(*urlsplit(start)[:2])
+    path = "/sitemend-404-probe-" + secrets.token_hex(6)
+    try:
+        r = requests.get(origin + path, timeout=timeout, allow_redirects=True,
+                         headers={"User-Agent": "sitemend-crawler/1.0 (+local audit)"})
+    except Exception as e:
+        return {"path": path, "status": None, "error": str(e)[:200]}
+    return {"path": path, "status": r.status_code, "final_url": r.url,
+            "redirects": [h.status_code for h in r.history]}
+
+
 SECURITY_HEADERS = ("strict-transport-security", "x-content-type-options")
 
 
@@ -568,6 +624,7 @@ def main():
         (pages, assets, robots_txt, sitemap_xml, extras, excluded,
          skipped, refs, names) = crawl_fs(args.root, args.base_url)
         source = os.path.abspath(args.root)
+        soft404 = None
     else:
         if not args.start:
             ap.error("--start is required in http mode")
@@ -575,6 +632,7 @@ def main():
          skipped, refs, names) = crawl_http(args.start, args.max_pages, render=args.render,
                                   render_limit=args.render_limit)
         source = args.start
+        soft404 = probe_soft404(args.start)
 
     robots = S.Robots(robots_txt)
     sm_urls, sm_errs = S.parse_sitemap(sitemap_xml)
@@ -609,6 +667,7 @@ def main():
             "rendered_pages": sum(1 for p in pages if p.get("rendered")),
             "excluded_dirs_present": excluded,
             "skipped": skipped,
+            "soft404_probe": soft404,
         },
         "robots": {
             "found": robots.found,

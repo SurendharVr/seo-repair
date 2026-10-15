@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+Three checks for deploys that break SEO:
+
+- **`S1-HOST-MISMATCH`:** canonicals, `og:url`, sitemap `<loc>`s, the robots `Sitemap:`
+  line and the base URL name different hosts. Critical when one is a hosting platform's
+  preview host (`*.vercel.app`, `*.netlify.app`, `*.pages.dev`...) that is not the base.
+- **`S1-SOFT-404`:** http mode requests one random path that cannot exist and reports a
+  200 answer (SPA catch-all, redirect to home).
+- **`S2-UNCRAWLABLE-LINK`:** `href="#"`, `javascript:`, an `<a>` with a click handler
+  but no href, or an `onclick` that sets `location` on a non-link. Menu toggles, back-to-top
+  links and bare `<a>` breadcrumb items are not reported.
+
+`X-Robots-Tag: noindex` on the production homepage was already the critical
+`S1-NOT-INDEXABLE`; a test now pins that.
+
 ## 1.3.0 - 2026-10-14
 
 **Renamed everywhere to `sitemend`.** 1.2.1 renamed only the PyPI package and command;
