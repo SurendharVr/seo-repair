@@ -3,21 +3,48 @@
 [![tests](https://github.com/SurendharVr/sitemend/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SurendharVr/sitemend/actions/workflows/tests.yml)
 [![license](https://img.shields.io/github/license/SurendharVr/sitemend)](LICENSE)
 
-**Find the SEO problems Google actually penalises, then fix them in your code.**
+**Catch the deploys that break your SEO, before Google does.**
 
-Built for developers and site owners who keep their site in a codebase and want SEO
-fixes as reviewable diffs, not a PDF of warnings. You approve every change before it's
-applied.
+Your site lives in a repo, ships every week, and more of its code is written by AI
+tools. Any one of those changes can drop a canonical tag, point the sitemap at
+`localhost`, orphan a page, or hide its content behind JavaScript. Usually you find out
+weeks later, in Search Console.
 
-A [Claude Code](https://claude.com/claude-code) skill: a site crawler and audit tool that finds indexing problems, orphan pages, duplicate
-content, broken internal links, thin content, missing canonical tags, keyword
-cannibalization and invalid schema markup — then proposes the fixes, applies the ones
-you approve, and re-verifies with a second crawl.
+sitemend crawls your site folder or live URL, fails the pull-request check when a
+change breaks crawling or indexing, and cites the exact page and string that caused
+it. In [Claude Code](https://claude.com/claude-code) it goes one step further: each
+finding becomes a fix you approve as a diff, followed by a re-crawl that proves the
+fix landed.
+
+```bash
+pip install sitemend
+sitemend audit ./my-site --fail-on high
+```
+
+**Built for** product teams whose marketing site or docs live in a codebase (Next.js,
+Astro, Hugo, plain HTML), and web agencies that want proof a site is crawlable before
+handover. **Not for** sites that live only in a CMS such as WordPress, Shopify or
+Webflow, where there is no code to fix, and not for keyword research.
 
 Formerly `seo-repair`; the old GitHub URL redirects here.
 
-What makes it different from a checklist: **the order is enforced.** SEO findings are
-not independent, so this treats them as a repair system with a dependency order.
+## What breaks, and what sitemend reports
+
+| What went wrong | Finding |
+| --- | --- |
+| The canonical or sitemap points at `localhost`, `example.com` or another page | `S1-PLACEHOLDER-DOMAIN`, `S1-CANONICAL-CROSS`, `S1-CANONICAL-OFFSITE` |
+| A page is listed in the sitemap but blocked by `noindex` or `robots.txt` | `S1-INDEX-CONTRADICTION` (critical) |
+| Content only appears after JavaScript runs, so crawlers that don't render it see an empty page | `S1-JS-SHELL`; with `--render`, `S1-JS-DEPENDENT` and `S1-JS-HEAD-MISMATCH` |
+| A redesign orphaned pages or broke internal links | `S2-ORPHAN`, `S1-BROKEN-LINK` |
+| A template produces duplicate or near-duplicate pages | `S3-DUPLICATE-EXACT`, `S3-NEAR-DUPLICATE` |
+| Structured data claims ratings or reviews the page never shows | `S5-SCHEMA-UNSUPPORTED-CLAIM` |
+
+The full list is under [What it finds](#what-it-finds).
+
+## Fixes in the order that matters
+
+SEO findings are not independent, so sitemend treats them as a repair system with a
+dependency order, **enforced in code**.
 
 ```
 Crawl → Index → Architecture → Content → On-Page → Performance → Schema → Authority → Monitor
@@ -115,15 +142,26 @@ what stops a page being crawled and indexed first, then decide what it should sa
 
 ## Works with
 
-- **Full workflow:** Claude Code (audit, plan, apply, verify).
-- **Standalone:** one command, `sitemend audit <folder|URL>` (or
-  `python scripts/sitemend.py audit ...` from a clone), runs the whole pipeline on
-  plain Python 3.9+. No agent needed. See below.
+- **In CI:** a GitHub Action that fails the pull-request check when a change breaks
+  crawling or indexing. See below.
+- **On the command line:** `sitemend audit <folder|URL>` runs the whole audit on plain
+  Python 3.9+. No agent needed.
+- **In Claude Code:** the full workflow (audit, plan, apply, verify), where each fix
+  arrives as a diff you approve.
 - **Tested on:** Linux, macOS and Windows. The Lighthouse step is verified on Windows only.
 
 ## Install
 
-**As a plugin:**
+**As a command-line tool:**
+
+```bash
+pip install sitemend
+sitemend audit ./my-site
+```
+
+(For unreleased changes on `main`: `pip install git+https://github.com/SurendharVr/sitemend`.)
+
+**As a Claude Code plugin, to apply fixes:**
 
 ```
 /plugin marketplace add SurendharVr/sitemend
@@ -136,21 +174,12 @@ git clone https://github.com/SurendharVr/sitemend ~/.claude/skills/sitemend
 pip install -r ~/.claude/skills/sitemend/requirements.txt
 ```
 
-**Or as a command-line tool, without Claude Code:**
-
-```bash
-pip install sitemend
-sitemend audit ./my-site
-```
-
-(For unreleased changes on `main`: `pip install git+https://github.com/SurendharVr/sitemend`.)
-
 Requires Python 3.9+ with `beautifulsoup4`, `lxml` and `requests` (`pip` installs them;
 from a clone, `requirements.txt` lists them). Core Web Vitals and `--render` additionally
 need a local Chrome, Chromium or Edge; Core Web Vitals also need Node, via
 `npx lighthouse`.
 
-## Use it without an agent
+## Run it in CI or from the command line
 
 One command audits a site folder or a live URL and writes a report and dashboard. It
 edits nothing in the site.
@@ -186,7 +215,7 @@ python audit.py        --crawl /tmp/crawl.json --schema /tmp/schema.json --out /
 [`examples/demo-site/EXPECTED.md`](examples/demo-site/EXPECTED.md) lists exactly what a
 correct run reports — **and what it must stay silent about**, which is the harder half.
 
-## Usage
+## Fixing in Claude Code
 
 Four verbs, driven through Claude Code:
 
