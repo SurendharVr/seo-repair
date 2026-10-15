@@ -25,6 +25,11 @@ sitemend audit ./my-site --fail-on high
 Free and MIT-licensed. No account and no API key; on a folder it makes no network
 calls, so your site never leaves your machine.
 
+**See it work:** a [live demo PR](https://github.com/SurendharVr/sitemend-demo/pull/2)
+that leaks a preview URL and drops a canonical, failed by the Action with its comment.
+**Proof:** a [hand-verified benchmark on 20 open-source sites](docs/benchmark-2026-10.md),
+including the false positives it found in sitemend itself.
+
 **Built for** product and docs teams whose site lives in a repo (Next.js, Astro, Hugo,
 Docusaurus, plain HTML) on Vercel, Netlify or similar, and web agencies that want proof
 a site is crawlable before handover. **Not for** sites that live only in a CMS such as
@@ -208,6 +213,11 @@ with a backlog today. One PR comment, updated on every push, lists the new and c
 findings with each one's page and quoted evidence; the full report and dashboard are
 attached to the run. For a stricter gate that also fails on findings the base already
 had, add `--fail-on high` to its `verify` step.
+
+To see what the comment looks like, open the
+[demo PR](https://github.com/SurendharVr/sitemend-demo/pull/2) in
+[sitemend-demo](https://github.com/SurendharVr/sitemend-demo), a small static site
+running this exact workflow.
 
 Output lands in `./sitemend-out`: `findings.json`, `SEO-REPORT-<date>.md` and a
 self-contained `dashboard.html`. Applying fixes stays a Claude Code job, because each
