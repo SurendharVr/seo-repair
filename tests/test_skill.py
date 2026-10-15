@@ -255,6 +255,22 @@ class TestGateA(Base):
                                      .format(f["stage"], f["id"]))
 
 
+class TestIndexContradictionAliases(Base):
+    """REGRESSION found by the 2026-10-16 audit: a noindex services.html listed in the
+    sitemap as /services was medium S1-NOT-INDEXABLE, not the critical contradiction."""
+
+    def test_clean_url_in_sitemap_for_a_noindex_flat_file(self):
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="/services">s</a> ' + "word " * 300 + "</p>"))
+        self.fx.write("services.html", page_html(
+            title="Services Page With A Fine Title Here",
+            head_extra='<meta name="robots" content="noindex">'))
+        self.fx.write("sitemap.xml", "<urlset><url><loc>https://x.org/</loc></url>"
+                                     "<url><loc>https://x.org/services</loc></url></urlset>")
+        hit = [f for f in self.fx.audit()["findings"] if f["id"] == "S1-INDEX-CONTRADICTION"]
+        self.assertEqual([f["pages"] for f in hit], [["/services.html"]])
+
+
 # --------------------------------------------------------------- grouping
 
 class TestGrouping(Base):

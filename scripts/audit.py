@@ -232,7 +232,8 @@ def audit(doc, vitals=None, schema_findings=None):
                                    "Indexable page is missing from sitemap.xml.", [p["url"]],
                                    evidence=p["file"] or p["url"], recipe="sitemap-add"))
         if not ok:
-            in_sm = p["url"] in sitemap_paths
+            in_sm = p["url"] in sitemap_paths or any(
+                a in sitemap_paths for a in (p.get("aliases") or []))
             deliberate = is_utility(p["url"]) or (p.get("robots_allowed") is False
                                                   and p["url"] != home)
             if in_sm:
