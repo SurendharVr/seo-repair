@@ -1395,6 +1395,7 @@ class TestRenderCrawl(unittest.TestCase):
                          "set SITEMEND_RENDER_TEST=1 (needs Chrome, Chromium or Edge)")
     def test_render_crawl_sees_the_javascript_content(self):
         page = crawl.crawl_http(self.base, render=True, render_limit=3)[0][0]
+        self.assertIsNone(page.get("render_error"), page.get("render_error"))
         self.assertTrue(page["rendered"])
         self.assertEqual(page["h1"], ["Rendered by JS"])
         self.assertLess(page["raw"]["words"], 5)
