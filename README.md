@@ -123,7 +123,7 @@ from that:
 | **Numbers it cannot measure** | Nothing in a prompt stops a plausible figure | Never stated. Volume, difficulty, backlinks and field Core Web Vitals become a handoff list naming the report to open |
 | **Structured data** | Required properties, if it checks at all | Required properties, and whether the markup claims things the page never shows, such as review authors |
 | **Applying fixes** | Suggestions | One approved batch at a time, then a re-crawl to confirm it worked. Nothing is edited without approval |
-| **In CI** | No | `--fail-on` sets the exit code. An example GitHub Action is in `examples/` |
+| **In CI** | No | The example GitHub Action fails a PR only on findings it introduces, and comments the new and closed ones on the PR |
 | **Tested** | Not testable | 146 tests, many pinned to false positives found on real runs |
 
 **How big is the gap?** We measured it on the demo site (5 pages, 14 planted defects).
@@ -195,8 +195,13 @@ python scripts/sitemend.py verify ./my-site --baseline sitemend-out/findings.jso
 
 To guard a site on every pull request, copy
 [`examples/github-action/sitemend.yml`](examples/github-action/sitemend.yml) to
-`.github/workflows/`. It fails the check when a critical finding is open and attaches
-the report and dashboard to the run.
+`.github/workflows/`. It is a ratchet: it audits the PR's base branch and its head, and
+fails the check only when the PR adds a critical or high finding the base did not have.
+Findings already on the base branch never fail a PR, so you can turn it on for a site
+with a backlog today. One PR comment, updated on every push, lists the new and closed
+findings with each one's page and quoted evidence; the full report and dashboard are
+attached to the run. For a stricter gate that also fails on findings the base already
+had, add `--fail-on high` to its `verify` step.
 
 Output lands in `./sitemend-out`: `findings.json`, `SEO-REPORT-<date>.md` and a
 self-contained `dashboard.html`. Applying fixes stays a Claude Code job, because each

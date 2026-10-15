@@ -13,6 +13,13 @@ Three checks for deploys that break SEO:
   but no href, or an `onclick` that sets `location` on a non-link. Menu toggles, back-to-top
   links and bare `<a>` breadcrumb items are not reported.
 
+**The example GitHub Action is now a ratchet.** It audits the PR's base branch as the
+baseline and fails only on critical or high findings the PR adds, so a site with an
+existing backlog can adopt it without every PR going red. It posts one PR comment,
+updated on each push, listing new and closed findings with their pages and evidence.
+`verify` now also writes `verify.md` next to `verify.json` for that comment. The example
+pins `sitemend==1.4.0`, the first release with `verify.md`.
+
 `X-Robots-Tag: noindex` on the production homepage was already the critical
 `S1-NOT-INDEXABLE`; a test now pins that.
 
