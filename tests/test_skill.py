@@ -2240,6 +2240,55 @@ class TestHttpMaxPagesTruncation(unittest.TestCase):
             self.assertNotIn(fid, ids)
 
 
+class TestHttpSkipsNonHtmlBodies(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: a link to a 60 MB file downloaded all of
+    it just to learn it was not HTML."""
+
+    def test_linked_binary_is_not_downloaded(self):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+
+        sent = [0]
+        home = page_html(body='<h1>H</h1><p><a href="/big.bin">get</a> ' + "word " * 300 + "</p>").encode()
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path != "/big.bin":
+                    body = home if self.path == "/" else b"nope"
+                    self.send_response(200 if self.path == "/" else 404)
+                    self.send_header("Content-Type", "text/html")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                size, chunk = 64 * 1024 * 1024, b"\0" * 65536
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(size))
+                self.end_headers()
+                try:
+                    for _ in range(size // len(chunk)):
+                        self.wfile.write(chunk)
+                        sent[0] += len(chunk)
+                except OSError:
+                    pass
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        pages = crawl.crawl_http("http://127.0.0.1:%d/" % srv.server_address[1])[0]
+        self.assertEqual([p["url"] for p in pages], ["/"])
+        self.assertLess(sent[0], 16 * 1024 * 1024)
+
+
 class TestMetaRefresh(Base):
     """REGRESSION from the benchmark: docs.astro.build's home page is
     <meta http-equiv="refresh" content="0;url=/en/getting-started/">. It was judged as a

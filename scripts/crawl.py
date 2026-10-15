@@ -664,14 +664,18 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
         seen.add(path)
         url = origin + path
         try:
-            r = sess.get(url, timeout=timeout, allow_redirects=True)
+            # stream=True: only the headers are read here. A linked PDF or video is never
+            # downloaded just to learn it is not HTML; HTML bodies are read on r.text.
+            r = sess.get(url, timeout=timeout, allow_redirects=True, stream=True)
         except Exception as e:
             skipped.append({"url": path, "reason": str(e)[:200]})
             continue
 
         ctype = r.headers.get("Content-Type", "")
         if "html" not in ctype.lower():
+            r.close()
             continue
+        _ = r.content   # an HTML body: read it now, so every branch below releases the connection
 
         if r.status_code >= 400:
             # A URL that does not resolve is not a page of the site. Recording it as one
