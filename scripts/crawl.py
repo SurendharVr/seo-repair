@@ -484,11 +484,17 @@ def crawl_fs(root, base_url=None):
     if os.path.isfile(rp):
         robots_txt = read_text(rp)
 
+    real_root = os.path.realpath(root)
+
     def read_site_file(path):
-        if ".." in path.split("/"):
-            return ""
-        fp = os.path.join(root, path.lstrip("/").replace("/", os.sep))
-        return read_text(fp) if os.path.isfile(fp) else ""
+        # The path comes from the site's own robots.txt. On Windows /C:/x or /..\x would
+        # otherwise resolve outside the folder being audited.
+        fp = os.path.realpath(os.path.join(root, path.lstrip("/").replace("/", os.sep)))
+        try:
+            inside = os.path.commonpath([fp, real_root]) == real_root
+        except ValueError:          # a different drive on Windows
+            inside = False
+        return read_text(fp) if inside and os.path.isfile(fp) else ""
 
     sitemap_xml = discover_sitemap(robots_txt, read_site_file)
 

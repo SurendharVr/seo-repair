@@ -2465,6 +2465,23 @@ class TestSitemapDiscovery(Base):
         self.assertEqual(sev["S1-SITEMAP-MISSING"], "medium")
 
 
+class TestSitemapStaysInsideRoot(Base):
+    """REGRESSION found by the 2026-10-16 audit: on Windows a robots.txt Sitemap: path
+    such as /C:/... or /..\\x was read from outside the audited folder."""
+
+    def test_robots_sitemap_path_cannot_leave_the_folder(self):
+        outside = tempfile.mkdtemp(prefix="sitemend-outside-")
+        self.addCleanup(shutil.rmtree, outside, True)
+        sm = os.path.join(outside, "sm.xml")
+        with open(sm, "w") as fh:
+            fh.write("<urlset><url><loc>https://x.org/LEAKED/</loc></url></urlset>")
+        self.fx.write("index.html", page_html())
+        for path in (sm.replace("\\", "/").lstrip("/"), os.path.relpath(sm, self.fx.root)):
+            with self.subTest(path=path):
+                self.fx.write("robots.txt", "User-agent: *\nSitemap: https://x.org/" + path + "\n")
+                self.assertEqual(self.fx.crawl()["sitemap"]["urls"], [])
+
+
 class TestUncrawlableBenchmark(Base):
     """REGRESSION from the benchmark: S2-UNCRAWLABLE-LINK fired on 5 sites and 3 were
     wrong. The 2 right ones must stay flagged."""
