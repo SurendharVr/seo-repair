@@ -655,6 +655,23 @@ class TestVerify(unittest.TestCase):
         self.assertFalse(V.related(self.f("S2-ORPHAN", ["/a"]), self.f("S2-ORPHAN", ["/z"])))
         self.assertFalse(V.related(self.f("S2-ORPHAN", ["/a"]), self.f("S3-THIN", ["/a"])))
 
+    def test_markdown_quotes_evidence_and_counts_only(self):
+        """The PR comment quotes each finding's evidence verbatim (bar the pipe that
+        would break the table) and its only numbers are counts from verify.json."""
+        new = self.f("S1-NOT-INDEXABLE", ["/"], evidence="<meta> noindex | nofollow",
+                     severity="critical")
+        doc = {"gate": "FAIL", "counts": {"closed": 1, "new": 1, "changed": 0, "persisting": 7},
+               "new": [new], "closed": [self.f("S3-THIN", ["/about"], severity="low")],
+               "changed": [], "regressions": [new]}
+        md = V.markdown(doc)
+        self.assertTrue(md.startswith(V.MARKER))
+        self.assertIn("regression gate FAIL", md)
+        self.assertIn("1 new, 1 closed, 0 changed, 7 unchanged", md)
+        self.assertIn("| critical | S1-NOT-INDEXABLE: S1-NOT-INDEXABLE | / | "
+                      "&lt;meta> noindex \\| nofollow |", md)
+        self.assertIn("### Closed", md)
+        self.assertNotIn("### New (critical", V.markdown(dict(doc, regressions=[])))
+
 
 # --------------------------------------------------------------- determinism
 

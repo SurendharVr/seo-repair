@@ -6,8 +6,12 @@ win, and only a re-crawl can tell the difference.
 
 Usage:
   python verify.py --baseline baseline/findings.json --current current/findings.json
+
+Next to --out it also writes a .md summary of the new and closed findings, for a
+pull-request comment.
 """
 import argparse
+import os
 import sys
 
 import seolib as S
@@ -27,6 +31,45 @@ def related(a, b):
     partial fix reports as one finding closed plus one brand-new finding, which is
     both wrong and alarming."""
     return a["id"] == b["id"] and bool(set(a.get("pages", [])) & set(b.get("pages", [])))
+
+
+MARKER = "<!-- sitemend-verify -->"
+
+
+def cell(v, limit=200):
+    """One markdown table cell, quoting the value as-is apart from what breaks a table
+    or would render as HTML (evidence is often markup, like `<source>`)."""
+    t = " ".join(str(v if v is not None else "").split())
+    t = t.replace("&", "&amp;").replace("<", "&lt;").replace("|", "\\|")
+    return t if len(t) <= limit else t[:limit - 1] + "…"
+
+
+def markdown(doc, rows=50):
+    """verify.json as a PR comment. Every number is a count of findings in doc; the
+    evidence column quotes what audit.py recorded."""
+    c = doc["counts"]
+    out = [MARKER, "## sitemend: regression gate {0}".format(doc["gate"]), "",
+           "{new} new, {closed} closed, {changed} changed, {persisting} unchanged "
+           "compared with the base branch.".format(**c)]
+
+    def table(title, items, note=""):
+        if not items:
+            return
+        items = sorted(items, key=lambda f: SEV_ORDER.index(f["severity"]))
+        out.extend(["", "### " + title + note, "",
+                    "| Severity | Finding | Pages | Evidence |", "|---|---|---|---|"])
+        for f in items[:rows]:
+            pages = f.get("pages", [])
+            p = ", ".join(pages[:5]) + (" +{0} more".format(len(pages) - 5) if len(pages) > 5 else "")
+            out.append("| {0} | {1} | {2} | {3} |".format(
+                f["severity"], cell(f["id"] + ": " + f.get("message", "")), cell(p),
+                cell(f.get("evidence"))))
+        if len(items) > rows:
+            out.append("\n...and {0} more in verify.json.".format(len(items) - rows))
+
+    table("New", doc["new"], " (critical and high block the merge)" if doc["regressions"] else "")
+    table("Closed", doc["closed"])
+    return "\n".join(out) + "\n"
 
 
 def main():
@@ -66,13 +109,17 @@ def main():
     regressions = [f for f in new if f["severity"] in ("critical", "high")]
     gate = "PASS" if not regressions else "FAIL"
 
-    S.jdump({
+    doc = {
         "gate": gate,
         "counts": {"closed": len(closed), "new": len(new),
                    "changed": len(changed), "persisting": len(persisting)},
         "closed": closed, "new": new, "changed": changed,
         "regressions": regressions,
-    }, args.out)
+    }
+    S.jdump(doc, args.out)
+    md_path = os.path.splitext(args.out)[0] + ".md"
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(markdown(doc))
 
     print("REGRESSION GATE: " + gate)
     print("  closed:     {0:3d}  {1}".format(len(closed), bysev(closed)))
