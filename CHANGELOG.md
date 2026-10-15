@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 - 2026-10-15
 
 Three checks for deploys that break SEO:
 
@@ -22,6 +22,12 @@ pins `sitemend==1.4.0`, the first release with `verify.md`.
 
 `X-Robots-Tag: noindex` on the production homepage was already the critical
 `S1-NOT-INDEXABLE`; a test now pins that.
+
+**Positioned as SEO regression tests for repo-based sites.** The README gains a category
+line, a Common questions section and a large-site limitation. The PyPI description,
+keywords and Testing/QA classifiers, and the plugin and marketplace descriptions, use
+the same wording. A stale README claim is fixed: the demo comparison said sitemend did
+not check placeholder domains or Open Graph tags, and it does now.
 
 ## 1.3.0 - 2026-10-14
 
