@@ -75,6 +75,10 @@ PLACEHOLDER_NAMES = {"example.com", "example.org", "example.net", "example.edu",
                      "127.0.0.1", "0.0.0.0", "::1", "yourdomain.com", "yoursite.com",
                      "yourwebsite.com"}
 PLACEHOLDER_TLDS = (".example", ".test", ".invalid", ".localhost")
+# Where an audit is run from, as opposed to where the site lives: a dev server's loopback
+# address. Narrower than PLACEHOLDER_NAMES on purpose -- a base of example.com is a site
+# (a wrong one), and an example.community canonical on it is still off-site.
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 # Hosting platforms' per-deploy hostnames. One that differs from the base URL means a
 # preview build's URLs leaked into production, which makes S1-HOST-MISMATCH critical.
 PREVIEW_HOSTS = (".vercel.app", ".netlify.app", ".pages.dev", ".onrender.com",
@@ -94,6 +98,14 @@ def placeholder_host_of(url):
         return None
     host = urlsplit(url).hostname
     return host if is_placeholder_host(host) else None
+
+
+def is_crawl_host(host):
+    """A dev server or a preview deploy: an origin a site is audited on, not its own.
+    `sitemend audit <url>` makes the crawled origin the base URL, so against one of
+    these every correct production canonical would read as off-site."""
+    h = (host or "").lower()
+    return h in LOOPBACK_HOSTS or h.endswith(".localhost") or h.endswith(PREVIEW_HOSTS)
 
 
 OG_REQUIRED = ("og:title", "og:description", "og:image")
@@ -247,7 +259,8 @@ def audit(doc, vitals=None, schema_findings=None):
                                evidence=p["file"] or p["url"], recipe="canonical-add"))
             continue
         cpath = path_of(c)
-        if base and c.startswith("http") and not same_origin(c, base):
+        if (base and not is_crawl_host(urlsplit(base).hostname)
+                and c.startswith("http") and not same_origin(c, base)):
             out.append(finding("S1-CANONICAL-OFFSITE", 1, "critical",
                                "Canonical points to a different origin.", [p["url"]],
                                evidence=c, recipe="canonical-fix"))

@@ -1897,6 +1897,24 @@ class TestHostMismatch(Base):
         self.assertEqual(crawl.infer_base_url(["https://acme.netlify.app/"], [], []),
                          "https://acme.netlify.app")
 
+    def _offsite(self, base):
+        self.fx.write("index.html", page_html(
+            head_extra='<link rel="canonical" href="https://acme-widgets.com/">'))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = base
+        return [f for f in audit.audit(doc)["findings"] if f["id"] == "S1-CANONICAL-OFFSITE"]
+
+    def test_dev_server_or_preview_crawl_does_not_flag_production_canonicals(self):
+        """REGRESSION found by the 2026-10-16 audit: `sitemend audit http://127.0.0.1:8000/`
+        reported every correct production canonical as critical S1-CANONICAL-OFFSITE."""
+        for base in ("http://127.0.0.1:8000", "http://localhost:3000", "http://app.localhost:5173",
+                     "https://acme-git-feat.vercel.app"):
+            with self.subTest(base=base):
+                self.assertEqual(self._offsite(base), [])
+
+    def test_a_production_base_still_flags_an_offsite_canonical(self):
+        self.assertEqual(len(self._offsite("https://acme-widgets.org")), 1)
+
 
 class TestXRobotsTagNoindex(Base):
     """X-Robots-Tag: noindex on the production homepage (a preview-deploy header that
