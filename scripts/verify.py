@@ -24,13 +24,38 @@ def key(f):
     return (f["id"], f.get("evidence"), tuple(sorted(f.get("pages", []))))
 
 
+# Rules whose evidence names the defect itself: the broken target, the canonical URL.
+# The same rule on the same page with different evidence is a different defect, so
+# fixing href="/a" while adding href="/b" is one closed and one new, never one changed.
+EVIDENCE_IS_IDENTITY = {"S1-CANONICAL-OFFSITE", "S1-CANONICAL-BROKEN", "S1-CANONICAL-CROSS",
+                        "S1-HREFLANG-BROKEN"}
+
+
+def identity(f):
+    """What makes this finding the defect it is, beyond its rule and pages. None for
+    rules whose evidence is a measurement (counts, similarity) that may drift."""
+    if f["id"] == "S1-BROKEN-LINK":
+        # One finding per target; its evidence quotes whichever href was seen first.
+        return (f.get("detail") or {}).get("target") or f.get("evidence")
+    if f["id"] in EVIDENCE_IS_IDENTITY:
+        return f.get("evidence")
+    return None
+
+
 def related(a, b):
-    """Same rule, overlapping pages. Matches a finding across runs even when its
-    evidence or page list changed -- which happens routinely, because a grouped
+    """Same rule, overlapping pages, same defect. Matches a finding across runs even when
+    its evidence or page list changed -- which happens routinely, because a grouped
     finding's page list shrinks as pages get fixed or removed. Without this, every
     partial fix reports as one finding closed plus one brand-new finding, which is
     both wrong and alarming."""
-    return a["id"] == b["id"] and bool(set(a.get("pages", [])) & set(b.get("pages", [])))
+    return (a["id"] == b["id"] and bool(set(a.get("pages", [])) & set(b.get("pages", [])))
+            and identity(a) == identity(b))
+
+
+def worse(f, than):
+    """f is critical/high and more severe than the baseline finding it matched."""
+    return (f["severity"] in ("critical", "high")
+            and SEV_ORDER.index(f["severity"]) < SEV_ORDER.index(than["severity"]))
 
 
 MARKER = "<!-- sitemend-verify -->"
@@ -68,6 +93,7 @@ def markdown(doc, rows=50):
             out.append("\n...and {0} more in verify.json.".format(len(items) - rows))
 
     table("New", doc["new"], " (critical and high block the merge)" if doc["regressions"] else "")
+    table("Got worse", doc.get("escalated", []), " (blocks the merge)")
     table("Closed", doc["closed"])
     return "\n".join(out) + "\n"
 
@@ -86,6 +112,7 @@ def main():
     ck = {key(f): f for f in cur}
 
     persisting = [f for k, f in ck.items() if k in bk]
+    escalated = [f for k, f in ck.items() if k in bk and worse(f, bk[k])]
     cur_unmatched = [f for k, f in ck.items() if k not in bk]
     base_unmatched = [f for k, f in bk.items() if k not in ck]
 
@@ -101,12 +128,14 @@ def main():
         else:
             paired_base.add(match)
             changed.append(f)
+            if worse(f, base_unmatched[match]):
+                escalated.append(f)
     closed = [b for i, b in enumerate(base_unmatched) if i not in paired_base]
 
     def bysev(items):
         return {s: sum(1 for f in items if f["severity"] == s) for s in SEV_ORDER}
 
-    regressions = [f for f in new if f["severity"] in ("critical", "high")]
+    regressions = [f for f in new if f["severity"] in ("critical", "high")] + escalated
     gate = "PASS" if not regressions else "FAIL"
 
     doc = {
@@ -114,6 +143,7 @@ def main():
         "counts": {"closed": len(closed), "new": len(new),
                    "changed": len(changed), "persisting": len(persisting)},
         "closed": closed, "new": new, "changed": changed,
+        "escalated": escalated,
         "regressions": regressions,
     }
     S.jdump(doc, args.out)

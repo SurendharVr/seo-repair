@@ -651,6 +651,36 @@ class TestVerify(unittest.TestCase):
         cur = [self.f("S2-HEADING-SKIP", ["/a", "/b"])]
         self.assertTrue(V.related(base[0], cur[0]))
 
+    def test_new_broken_target_on_the_same_page_is_new(self):
+        """REGRESSION found by the 2026-10-16 audit: fixing href="/a" while adding a
+        broken href="/b" on the same page read as one 'changed' finding and passed."""
+        a = dict(self.f("S1-BROKEN-LINK", ["/"], evidence='href="/a" -> /a'), detail={"target": "/a"})
+        b = dict(self.f("S1-BROKEN-LINK", ["/"], evidence='href="/b" -> /b'), detail={"target": "/b"})
+        self.assertFalse(V.related(a, b))
+
+    def test_same_broken_target_spelled_differently_is_still_changed(self):
+        a = dict(self.f("S1-BROKEN-LINK", ["/"], evidence='href="/a" -> /a'), detail={"target": "/a"})
+        b = dict(self.f("S1-BROKEN-LINK", ["/", "/x"], evidence='href="a" -> /a'), detail={"target": "/a"})
+        self.assertTrue(V.related(a, b))
+
+    def test_finding_that_gets_worse_fails_the_gate(self):
+        """REGRESSION found by the 2026-10-16 audit: S1-HOST-MISMATCH going high ->
+        critical (a preview host appeared) paired as 'changed' and passed."""
+        d = tempfile.mkdtemp(prefix="sitemend-verify-")
+        self.addCleanup(shutil.rmtree, d, True)
+        paths = {}
+        for name, sev, ev in (("b", "high", "canonical: www.x.org (3)"),
+                              ("c", "critical", "canonical: x-git-a.vercel.app (3)")):
+            paths[name] = os.path.join(d, name + ".json")
+            with open(paths[name], "w") as fh:
+                json.dump({"findings": [self.f("S1-HOST-MISMATCH", ["/"], evidence=ev, severity=sev)]}, fh)
+        r = sitemend.run("verify.py", "--baseline", paths["b"], "--current", paths["c"],
+                         "--out", os.path.join(d, "v.json"), ok=(0, 1))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("REGRESSION GATE: FAIL", r.stdout)
+        with open(os.path.join(d, "v.json"), encoding="utf-8") as fh:
+            self.assertEqual([f["id"] for f in json.load(fh)["escalated"]], ["S1-HOST-MISMATCH"])
+
     def test_unrelated_finding_is_new(self):
         self.assertFalse(V.related(self.f("S2-ORPHAN", ["/a"]), self.f("S2-ORPHAN", ["/z"])))
         self.assertFalse(V.related(self.f("S2-ORPHAN", ["/a"]), self.f("S3-THIN", ["/a"])))
