@@ -813,6 +813,10 @@ def audit(doc, vitals=None, schema_findings=None):
     # An inline copy here could not corroborate claims against page text and simply
     # double-reported through report.py's merge.
     for f in (schema_findings or []):
+        # Gate A holds here too: markup on a page that is not meant to be indexed is not
+        # worth fixing until it is, and must not block Gate C meanwhile.
+        if f["page"] in indexable and not indexable[f["page"]][0]:
+            continue
         out.append(finding(f["id"], 5, f["severity"], f["message"], [f["page"]],
                            evidence=f.get("evidence"), recipe="schema-fix"))
 

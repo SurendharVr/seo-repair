@@ -910,6 +910,27 @@ class TestStageFiveOwnership(Base):
         self.assertEqual(stage5, [], "stage 5 must come only from schema_check.py")
 
 
+class TestSchemaRespectsGateA(Base):
+    """REGRESSION found by the 2026-10-16 audit: a noindex page's broken JSON-LD was a
+    high S5 finding and blocked Gate C. Gate A covers stage 5 like every stage after 1."""
+
+    def _s5(self, robots_meta):
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="/draft.html">d</a> ' + "word " * 300 + "</p>"))
+        self.fx.write("draft.html", page_html(
+            title="Draft Page With A Long Enough Title",
+            head_extra=robots_meta + '<script type="application/ld+json">{"@type": bad}</script>'))
+        doc = self.fx.crawl()
+        schema = [f for p in doc["pages"] for f in schema_check.check_page(p)[0]]
+        return [f["id"] for f in audit.audit(doc, None, schema)["findings"] if f["stage"] == 5]
+
+    def test_noindex_page_gets_no_schema_findings(self):
+        self.assertEqual(self._s5('<meta name="robots" content="noindex">'), [])
+
+    def test_indexable_page_still_does(self):
+        self.assertEqual(self._s5(""), ["S5-SCHEMA-INVALID-JSON"])
+
+
 # ------------------------------------------------------- http mode: discovery
 
 class TestGateBIsModeAware(Base):
