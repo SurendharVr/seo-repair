@@ -46,11 +46,24 @@ Replace the placeholder origin with the real production origin everywhere the fi
 evidence lists it: canonicals, `og:url`, every `<loc>` in `sitemap.xml`, and the
 `Sitemap:` line in `robots.txt`. Do it in one batch, so the site never mixes two origins.
 Ask for the real origin; never guess it.
+For `S1-HOST-MISMATCH` the usual cause is a build-time URL variable (`NEXT_PUBLIC_SITE_URL`,
+`site` in `astro.config`, Hugo `baseURL`, `URL`/`DEPLOY_PRIME_URL` on Netlify,
+`VERCEL_URL` on Vercel) that holds the preview host in the production build. Set it from
+one production value and leave it unset for previews, rather than editing generated files.
+Pick www or the apex once and redirect the other.
 
 ### `broken-link-fix` — safe
 Repoint to the correct URL, or remove the link. Check `detail.refs` for every source
 page; a broken link in a shared header or footer appears once as a finding but is one
 edit in one shared file.
+
+### `soft-404-fix` — care
+A missing URL must answer **404** (or 410), not 200. Common causes: an SPA rewrite of
+every path to `/index.html` (Netlify `/* /index.html 200`, a Vercel catch-all rewrite),
+a catch-all route that renders "not found" with status 200, or a blanket redirect of
+unknown paths to the homepage. Keep the friendly error page; change only its status
+(Next.js `notFound()`, Astro `404.astro`, a `404.html` the host serves with status 404).
+Check that real client-side routes still resolve after the change before shipping it.
 
 ### `redirect-fix` — care
 Point every internal link, canonical and sitemap entry straight at the final URL, then
@@ -110,6 +123,14 @@ Add contextual links from relevant existing pages, using descriptive anchor text
 Prefer body copy over another nav entry — a link everyone ignores in a mega-menu passes
 less signal than one inside relevant prose. For `S2-ORPHAN`, at least one link from a
 topically related page. Never build a link block that exists only for crawlers.
+
+### `crawlable-link-fix` — safe
+Every navigation target gets a real `<a href="/path">`. Keep any click handler for
+behaviour, but the URL must be in the `href`: `href="#"`, `javascript:` and an `onclick`
+on a `<div>` or `<button>` give a crawler nothing to follow. In React or Vue, use the
+router's link component (`next/link`, `<RouterLink>`), which renders a real `href`. A
+control that toggles a menu is not a link: give it `<button>` or `aria-expanded` and it
+stops being reported.
 
 ### `heading-fix` — safe
 Exactly one `<h1>` per page, matching the page's actual subject. No skipped levels.

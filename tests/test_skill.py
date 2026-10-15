@@ -1697,5 +1697,214 @@ class TestVitalsLive(unittest.TestCase):
         self.assertIn("/?q=a&lang=en", seen)
 
 
+class TestHostMismatch(Base):
+    """A preview deploy's host (*.vercel.app) baked into a production build was invisible:
+    the base origin is inferred from the same URLs, and only canonicals were compared."""
+
+    def _hit(self, canonical=None, og_url=None, sitemap_host=None, robots_sitemap=None,
+             base="https://acme-widgets.com"):
+        extra = ""
+        if canonical:
+            extra += '<link rel="canonical" href="{0}">'.format(canonical)
+        if og_url:
+            extra += '<meta property="og:url" content="{0}">'.format(og_url)
+        self.fx.write("index.html", page_html(head_extra=extra))
+        if sitemap_host:
+            self.fx.write("sitemap.xml",
+                          "<urlset><url><loc>https://{0}/</loc></url></urlset>".format(sitemap_host))
+        if robots_sitemap:
+            self.fx.write("robots.txt", "User-agent: *\nAllow: /\nSitemap: {0}\n".format(robots_sitemap))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = base
+        return [f for f in audit.audit(doc)["findings"] if f["id"] == "S1-HOST-MISMATCH"]
+
+    def test_preview_host_in_sitemap_is_critical(self):
+        hit = self._hit(canonical="https://acme-widgets.com/", sitemap_host="acme-git-main.vercel.app")
+        self.assertEqual(len(hit), 1)
+        self.assertEqual(hit[0]["severity"], "critical")
+        self.assertIn("acme-git-main.vercel.app", hit[0]["evidence"])
+        self.assertIn("base URL acme-widgets.com", hit[0]["evidence"])
+
+    def test_preview_host_in_og_url_is_flagged_on_the_page(self):
+        hit = self._hit(canonical="https://acme-widgets.com/", og_url="https://acme.netlify.app/")
+        self.assertEqual(hit[0]["pages"], ["/"])
+        self.assertEqual(hit[0]["severity"], "critical")
+
+    def test_www_against_apex_is_high(self):
+        hit = self._hit(canonical="https://acme-widgets.com/", sitemap_host="www.acme-widgets.com",
+                        robots_sitemap="https://acme-widgets.com/sitemap.xml")
+        self.assertEqual([f["severity"] for f in hit], ["high"])
+
+    def test_inconsistent_sources_without_a_base_url(self):
+        self.assertTrue(self._hit(canonical="https://acme-widgets.com/",
+                                  sitemap_host="acme.pages.dev", base=None))
+
+    def test_consistent_site_is_clean(self):
+        self.assertEqual(self._hit(canonical="https://acme-widgets.com/",
+                                   og_url="https://acme-widgets.com/",
+                                   sitemap_host="acme-widgets.com",
+                                   robots_sitemap="https://acme-widgets.com/sitemap.xml"), [])
+
+    def test_production_on_a_platform_host_is_clean(self):
+        """A site whose real home IS acme.netlify.app is not a leak."""
+        self.assertEqual(self._hit(canonical="https://acme.netlify.app/",
+                                   sitemap_host="acme.netlify.app",
+                                   base="https://acme.netlify.app"), [])
+
+    def test_crawling_localhost_or_a_preview_is_not_a_mismatch(self):
+        """`sitemend audit <url>` makes the crawled origin the base URL. A dev server or a
+        preview deploy whose URLs all correctly name production must stay clean."""
+        for base in ("http://127.0.0.1:8000", "https://acme-git-feat.vercel.app"):
+            with self.subTest(base=base):
+                self.assertEqual(self._hit(canonical="https://acme-widgets.com/",
+                                           sitemap_host="acme-widgets.com", base=base), [])
+
+    def test_preview_crawl_still_catches_a_preview_host_in_its_sitemap(self):
+        """VERCEL_URL is the per-deploy host even in production, so a sitemap built from
+        it is a real bug wherever it is crawled."""
+        hit = self._hit(canonical="https://acme-widgets.com/", sitemap_host="acme-abc123.vercel.app",
+                        base="https://acme-abc123.vercel.app")
+        self.assertEqual([f["severity"] for f in hit], ["critical"])
+
+    def test_relative_urls_and_schemes_are_not_hosts(self):
+        self.assertEqual(self._hit(canonical="/", sitemap_host="acme-widgets.com",
+                                   robots_sitemap="http://acme-widgets.com/sitemap.xml"), [])
+
+    def test_canonical_alone_offsite_is_left_to_canonical_offsite(self):
+        """Not reported twice: S1-CANONICAL-OFFSITE already names the page."""
+        self.assertEqual(self._hit(canonical="https://acme.vercel.app/",
+                                   sitemap_host="acme-widgets.com"), [])
+
+    def test_placeholder_host_is_left_to_placeholder_domain(self):
+        self.assertEqual(self._hit(canonical="https://acme-widgets.com/",
+                                   sitemap_host="demo.example.com"), [])
+
+
+class TestXRobotsTagNoindex(Base):
+    """X-Robots-Tag: noindex on the production homepage (a preview-deploy header that
+    shipped) is already the critical S1-NOT-INDEXABLE. Pinned so it stays that way."""
+
+    def test_header_noindex_on_home_is_critical(self):
+        self.fx.write("index.html", page_html())
+        doc = self.fx.crawl()
+        doc["meta"].update(mode="http", base_url="https://acme-widgets.com")
+        doc["pages"][0]["x_robots_tag"] = "noindex"
+        hit = [f for f in audit.audit(doc)["findings"] if f["id"] == "S1-NOT-INDEXABLE"]
+        self.assertEqual([(f["severity"], f["evidence"]) for f in hit],
+                         [("critical", "X-Robots-Tag noindex")])
+
+
+class TestSoft404(unittest.TestCase):
+    """The probe requests one random path at the origin root. A real server answering
+    it 404 is clean; a catch-all answering 200 (SPA rewrite, redirect to home) is not."""
+
+    def _serve(self, catch_all):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path != "/" and catch_all == "redirect":
+                    self.send_response(302)
+                    self.send_header("Location", "/")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                code = 200 if self.path == "/" or catch_all == "spa" else 404
+                body = b"<html><body>hi</body></html>"
+                self.send_response(code)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        return crawl.probe_soft404("http://127.0.0.1:%d/" % srv.server_address[1])
+
+    def _hit(self, probe, mode="http"):
+        doc = {"meta": {"mode": mode, "base_url": None, "soft404_probe": probe},
+               "robots": {"found": True, "sitemaps": [], "groups": [], "raw": ""},
+               "sitemap": {"found": True, "urls": [], "notes": [], "lastmods": []},
+               "pages": [], "assets": []}
+        return [f for f in audit.audit(doc)["findings"] if f["id"] == "S1-SOFT-404"]
+
+    def test_proper_404_is_clean(self):
+        probe = self._serve(None)
+        self.assertEqual(probe["status"], 404)
+        self.assertTrue(probe["path"].startswith("/sitemend-404-probe-"))
+        self.assertEqual(self._hit(probe), [])
+
+    def test_spa_catch_all_is_flagged(self):
+        hit = self._hit(self._serve("spa"))
+        self.assertEqual([f["severity"] for f in hit], ["high"])
+        self.assertIn("-> 200", hit[0]["evidence"])
+        self.assertNotIn("redirect", hit[0]["evidence"])
+
+    def test_redirect_to_home_is_flagged_and_says_so(self):
+        hit = self._hit(self._serve("redirect"))
+        self.assertIn("after redirect", hit[0]["evidence"])
+
+    def test_probe_is_random(self):
+        self.assertNotEqual(self._serve(None)["path"], self._serve(None)["path"])
+
+    def test_unreachable_probe_and_fs_mode_say_nothing(self):
+        self.assertEqual(self._hit({"path": "/x", "status": None, "error": "refused"}), [])
+        self.assertEqual(self._hit({"path": "/x", "status": 200}, mode="fs"), [])
+        self.assertEqual(self._hit(None), [])
+
+
+class TestUncrawlableLinks(Base):
+    def _hit(self, body):
+        self.fx.write("index.html", page_html(body="<h1>H</h1><p>" + "word " * 300 + "</p>" + body))
+        return [f for f in self.fx.audit()["findings"] if f["id"] == "S2-UNCRAWLABLE-LINK"]
+
+    def test_js_navigation_is_flagged(self):
+        for body in ('<a href="#">Pricing</a>',
+                     '<a href="javascript:void(0)" onclick="go()">Pricing</a>',
+                     '<a onclick="go(\'/pricing\')">Pricing</a>',
+                     '<a tabindex="0">Pricing</a>',
+                     '<div onclick="location.href=\'/pricing\'">Pricing</div>',
+                     '<button onclick="window.location = \'/pricing\'">Pricing</button>',
+                     '<span onclick="window.open(\'/pricing\')">Pricing</span>'):
+            with self.subTest(body=body):
+                hit = self._hit(body)
+                self.assertEqual(len(hit), 1, body)
+                self.assertEqual(hit[0]["severity"], "medium")
+                self.assertIn("Pricing", hit[0]["evidence"])
+
+    def test_things_that_are_not_navigation_are_clean(self):
+        for body in ('<a href="/pricing" onclick="track()">Pricing</a>',
+                     '<a>Current crumb</a>',
+                     '<a name="section"></a>',
+                     '<a href="#">Back to top</a>',
+                     '<a href="#features">Features</a>',
+                     '<a href="#" role="button">Menu</a>',
+                     '<a href="#" aria-expanded="false">Menu</a>',
+                     '<a href="#" data-bs-toggle="dropdown">Menu</a>',
+                     '<button onclick="openMenu()">Menu</button>',
+                     '<div onclick="toggle()">Show more</div>'):
+            with self.subTest(body=body):
+                self.assertEqual(self._hit(body), [], body)
+
+    def test_shared_nav_is_one_finding(self):
+        nav = '<a href="#">Pricing</a>'
+        self.fx.write("index.html", page_html(body='<h1>H</h1><a href="/b.html">b</a>' + nav))
+        self.fx.write("b.html", page_html(title="Another Perfectly Reasonable Title",
+                                          body='<h1>B</h1><a href="/">h</a>' + nav))
+        hit = [f for f in self.fx.audit()["findings"] if f["id"] == "S2-UNCRAWLABLE-LINK"]
+        self.assertEqual(len(hit), 1)
+        self.assertEqual(hit[0]["pages"], ["/", "/b.html"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

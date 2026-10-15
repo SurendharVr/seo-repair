@@ -75,6 +75,11 @@ PLACEHOLDER_NAMES = {"example.com", "example.org", "example.net", "example.edu",
                      "127.0.0.1", "0.0.0.0", "::1", "yourdomain.com", "yoursite.com",
                      "yourwebsite.com"}
 PLACEHOLDER_TLDS = (".example", ".test", ".invalid", ".localhost")
+# Hosting platforms' per-deploy hostnames. One that differs from the base URL means a
+# preview build's URLs leaked into production, which makes S1-HOST-MISMATCH critical.
+PREVIEW_HOSTS = (".vercel.app", ".netlify.app", ".pages.dev", ".onrender.com",
+                 ".herokuapp.com", ".web.app", ".firebaseapp.com", ".amplifyapp.com",
+                 ".fly.dev", ".surge.sh")
 
 
 def is_placeholder_host(host):
@@ -264,6 +269,49 @@ def audit(doc, vitals=None, schema_findings=None):
                            sorted(on_pages) or ["/"],
                            evidence="; ".join(where), recipe="domain-fix"))
 
+    # Host consistency: the URLs a site publishes about itself should all name one host.
+    # A preview deploy's host (*.vercel.app) baked into a production build, or www in the
+    # canonicals and the apex in the sitemap, splits signals across hosts. Placeholder
+    # hosts are left to S1-PLACEHOLDER-DOMAIN above.
+    # The base URL only counts when it is a production host: an http crawl of localhost or
+    # of a preview deploy takes the crawled origin as its base, and that preview's correct
+    # production canonicals are not a mismatch.
+    base_host = (urlsplit(base).hostname or "") if base else ""
+    if is_placeholder_host(base_host) or base_host.endswith(PREVIEW_HOSTS):
+        base_host = ""
+    seen_hosts = defaultdict(lambda: defaultdict(int))     # source -> host -> count
+    off_pages = set()
+    for label, getter in (("canonical", lambda p: p.get("canonical")),
+                          ("og:url", lambda p: (p.get("og") or {}).get("og:url"))):
+        for p in pages:
+            v = getter(p) or ""
+            h = urlsplit(v).hostname if v.startswith("http") else None
+            if h and not is_placeholder_host(h):
+                seen_hosts[label][h] += 1
+                if base_host and h != base_host:
+                    off_pages.add(p["url"])
+    for label, urls in (("sitemap.xml", doc["sitemap"]["urls"]),
+                        ("robots.txt Sitemap line", doc["robots"]["sitemaps"])):
+        for u in urls:
+            h = urlsplit(u).hostname if u.startswith("http") else None
+            if h and not is_placeholder_host(h):
+                seen_hosts[label][h] += 1
+    all_hosts = {h for hs in seen_hosts.values() for h in hs} | ({base_host} if base_host else set())
+    # Canonicals alone on another origin are already S1-CANONICAL-OFFSITE, page by page.
+    canonical_only = base_host and all(set(hs) <= {base_host}
+                                       for label, hs in seen_hosts.items() if label != "canonical")
+    if len(all_hosts) > 1 and not canonical_only:
+        preview = sorted(h for h in all_hosts if h != base_host and h.endswith(PREVIEW_HOSTS))
+        parts = (["base URL " + base_host] if base_host else []) + [
+            "{0}: {1}".format(label, ", ".join("{0} ({1})".format(h, n) for h, n in sorted(hs.items())))
+            for label, hs in seen_hosts.items()]
+        out.append(finding("S1-HOST-MISMATCH", 1, "critical" if preview else "high",
+                           "The site's own URLs name {0} different hosts{1}.".format(
+                               len(all_hosts),
+                               ", including preview host " + ", ".join(preview) if preview else ""),
+                           sorted(off_pages) or ["/"], evidence="; ".join(parts),
+                           recipe="domain-fix", detail={"hosts": sorted(all_hosts)}))
+
     # broken internal links
     broken = defaultdict(list)
     for p in pages:
@@ -296,6 +344,15 @@ def audit(doc, vitals=None, schema_findings=None):
             out.append(finding("S1-REDIRECT-LOOP", 1, "high",
                                "URL redirects in a loop and never resolves.", [sk["url"]],
                                evidence=reason, recipe="redirect-fix"))
+
+    # soft 404: the http crawl requested one random path that cannot exist
+    probe = doc["meta"].get("soft404_probe") or {}
+    if doc["meta"].get("mode") == "http" and probe.get("status") == 200:
+        via = " (after redirect to {0})".format(probe["final_url"]) if probe.get("redirects") else ""
+        out.append(finding("S1-SOFT-404", 1, "high",
+                           "A URL that does not exist returns 200, so missing pages look like real ones.",
+                           ["/"], evidence="GET {0} -> 200{1}".format(probe["path"], via),
+                           recipe="soft-404-fix"))
 
     # mixed content: http:// subresources on a page that is served over https
     for p in pages:
@@ -514,6 +571,15 @@ def audit(doc, vitals=None, schema_findings=None):
                                "No BreadcrumbList structured data on a non-home page.", [p["url"]],
                                evidence="jsonld types: " + (", ".join(p["jsonld_types"]) or "none"),
                                recipe="breadcrumb-add", confidence="medium"))
+
+    # navigation with no real href: crawlers follow URLs, not click handlers
+    for p in live:
+        bad = p.get("uncrawlable_links") or []
+        if bad:
+            out.append(finding("S2-UNCRAWLABLE-LINK", 2, "medium",
+                               "{0} link(s) have no URL a crawler can follow.".format(len(bad)),
+                               [p["url"]], evidence="; ".join(bad[:3]),
+                               recipe="crawlable-link-fix", confidence="medium"))
 
     # ------------------------------------------------- STAGE 3: content/on-page
     # exact + near duplicates
