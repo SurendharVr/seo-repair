@@ -751,9 +751,10 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
 
         if r.status_code == 200:
             for l in rec["links"]:
-                if l["kind"] != "internal":
+                t = audit.internal_target(l, origin)
+                if t is None:
                     continue
-                nxt = S.canonical_http_path(l["resolved"])
+                nxt = S.canonical_http_path(t)
                 if nxt not in seen:
                     queue.append(nxt)
 

@@ -131,6 +131,36 @@ class TestUrlMapping(Base):
         self.assertNotIn("S1-BROKEN-LINK", self.fx.ids())
 
 
+class TestAbsoluteInternalLinks(Base):
+    """REGRESSION found by the 2026-10-16 audit: links written as absolute URLs on the
+    site's own origin were ignored, so every page of a Hugo/Jekyll-style site was a high
+    S2-ORPHAN and S2-UNREACHABLE, and its real broken links went unreported."""
+
+    def _findings(self, other=False):
+        host = "https://other.org" if other else "https://site.org"
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="https://site.org/about/">About</a> ' + "word " * 300 + "</p>"))
+        self.fx.write("about/index.html", page_html(
+            title="About Page With A Fine Long Title",
+            body='<h1>A</h1><p><a href="https://site.org/">Home</a> <a href="{0}/gone/">x</a> '
+                 .format(host) + "more " * 300 + "</p>"))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = "https://site.org"
+        return audit.audit(doc)["findings"]
+
+    def test_same_origin_absolute_links_are_inlinks(self):
+        ids = [f["id"] for f in self._findings()]
+        self.assertNotIn("S2-ORPHAN", ids)
+        self.assertNotIn("S2-UNREACHABLE", ids)
+
+    def test_same_origin_absolute_link_to_a_missing_page_is_broken(self):
+        broken = [f for f in self._findings() if f["id"] == "S1-BROKEN-LINK"]
+        self.assertEqual([f["detail"]["target"] for f in broken], ["/gone/"])
+
+    def test_another_origin_is_still_external(self):
+        self.assertNotIn("S1-BROKEN-LINK", [f["id"] for f in self._findings(other=True)])
+
+
 # --------------------------------------------------------------- exclusions
 
 class TestExclusions(Base):
@@ -2082,6 +2112,14 @@ class TestHttpStartRedirect(unittest.TestCase):
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 1)
         self.assertIn("crawled 0 pages", r.stderr)
+
+    def test_http_crawl_follows_absolute_links_on_its_own_origin(self):
+        routes = {"/": (200, "text/html", None, {}),
+                  "/about/": (200, "text/html", page_html(title="About Page With A Fine Long Title"), {})}
+        base = serve(self, routes)
+        routes["/"] = (200, "text/html", page_html(
+            body='<h1>H</h1><p><a href="{0}about/">a</a> '.format(base) + "word " * 300 + "</p>"), {})
+        self.assertEqual(sorted(p["url"] for p in crawl.crawl_http(base)[0]), ["/", "/about/"])
 
 
 STUB = ('<!doctype html><html><head><meta http-equiv="refresh" content="{0}">'

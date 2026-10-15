@@ -141,6 +141,17 @@ def same_origin(url, base):
     return (a.scheme, a.netloc.lower()) == (b.scheme, b.netloc.lower())
 
 
+def internal_target(link, base):
+    """The site path a crawled link points at, or None when it leaves the site. An
+    absolute URL on the site's own origin (https://site.org/about/, as Hugo, Jekyll and
+    WordPress exports write) is as internal as href="/about/"."""
+    if link["kind"] == "internal":
+        return S.norm_path(link["resolved"])
+    if link["kind"] == "absolute" and base and same_origin(link["resolved"], base):
+        return path_of(link["resolved"])
+    return None
+
+
 def build_index(doc):
     """alias -> canonical page url, plus the asset path set."""
     alias = {}
@@ -340,9 +351,9 @@ def audit(doc, vitals=None, schema_findings=None):
     broken = defaultdict(list)
     for p in pages:
         for l in p["links"]:
-            if l["kind"] != "internal":
+            t = internal_target(l, base)
+            if t is None:
                 continue
-            t = S.norm_path(l["resolved"])
             if t in alias or t in assets or S.canonical_http_path(t) in not_crawled:
                 continue
             if re.search(r"\.(css|js|png|jpe?g|webp|svg|ico|pdf|txt|xml|woff2?|mp4|webm)$", t, re.I):
@@ -520,9 +531,7 @@ def audit(doc, vitals=None, schema_findings=None):
     inlinks = defaultdict(set)
     for p in pages:
         for l in p["links"]:
-            if l["kind"] != "internal":
-                continue
-            t = S.norm_path(l["resolved"])
+            t = internal_target(l, base)
             if t in alias and alias[t] != p["url"]:
                 inlinks[alias[t]].add(p["url"])
 
@@ -533,9 +542,7 @@ def audit(doc, vitals=None, schema_findings=None):
         nxt = []
         for u in frontier:
             for l in by_url[u]["links"]:
-                if l["kind"] != "internal":
-                    continue
-                t = S.norm_path(l["resolved"])
+                t = internal_target(l, base)
                 if t in alias and alias[t] not in depth:
                     depth[alias[t]] = depth[u] + 1
                     nxt.append(alias[t])
