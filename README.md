@@ -5,26 +5,31 @@
 
 **Catch the deploys that break your SEO, before Google does.**
 
-Your site lives in a repo, ships every week, and more of its code is written by AI
-tools. Any one of those changes can drop a canonical tag, point the sitemap at
-`localhost`, orphan a page, or hide its content behind JavaScript. Usually you find out
-weeks later, in Search Console.
+SEO regression tests for Next.js, Astro and docs sites.
 
-sitemend crawls your site folder or live URL, fails the pull-request check when a
-change breaks crawling or indexing, and cites the exact page and string that caused
-it. In [Claude Code](https://claude.com/claude-code) it goes one step further: each
-finding becomes a fix you approve as a diff, followed by a re-crawl that proves the
-fix landed.
+Your site lives in a repo, ships every week, and more of its code is written by AI
+tools. Any one of those changes can drop a canonical tag, leak a `*.vercel.app` preview
+URL into the sitemap, orphan a page, or hide its content behind JavaScript. Usually you
+find out weeks later, in Search Console.
+
+sitemend crawls your build on every pull request, fails the check when a change breaks
+crawling or indexing, and cites the exact page and string that caused it. In
+[Claude Code](https://claude.com/claude-code) it goes one step further: each finding
+becomes a fix you approve as a diff, followed by a re-crawl that proves the fix landed.
 
 ```bash
 pip install sitemend
 sitemend audit ./my-site --fail-on high
 ```
 
-**Built for** product teams whose marketing site or docs live in a codebase (Next.js,
-Astro, Hugo, plain HTML), and web agencies that want proof a site is crawlable before
-handover. **Not for** sites that live only in a CMS such as WordPress, Shopify or
-Webflow, where there is no code to fix, and not for keyword research.
+Free and MIT-licensed. No account and no API key; on a folder it makes no network
+calls, so your site never leaves your machine.
+
+**Built for** product and docs teams whose site lives in a repo (Next.js, Astro, Hugo,
+Docusaurus, plain HTML) on Vercel, Netlify or similar, and web agencies that want proof
+a site is crawlable before handover. **Not for** sites that live only in a CMS such as
+WordPress, Shopify or Webflow, where there is no code to fix, and not for keyword or
+backlink research; use claude-seo or Ahrefs for that.
 
 Formerly `seo-repair`; the old GitHub URL redirects here.
 
@@ -130,9 +135,10 @@ from that:
 Three plain "audit this site" runs by an AI agent with read-only file access found 14, 12
 and 13 of the defects, with one false alarm between them. sitemend found all 14 with no
 false alarms, gave identical findings on two runs, and took about 3 seconds without using
-a language model. On a site this small a good prompt does well, and it noticed things
-sitemend does not check, such as a placeholder domain in the sitemap and missing Open
-Graph tags. The advantage is repeatability, scale and CI, not a better score on five
+a language model. On a site this small a good prompt does well, and it noticed two
+things sitemend did not check at the time, a placeholder domain in the sitemap and
+missing Open Graph tags; both are rules now (`S1-PLACEHOLDER-DOMAIN`, `S3-OG-MISSING`).
+The advantage is repeatability, scale and CI, not a better score on five
 pages. The demo was built around what sitemend detects, and this was one model and three
 runs, so read it as an example, not a benchmark.
 
@@ -250,6 +256,36 @@ refuses without a named, approved batch.
 
 Findings cite the offending string from your source, so every one is checkable.
 
+## Common questions
+
+**We already run Lighthouse CI.** Keep it. Lighthouse tests one page at a time and its
+SEO category is a short list of per-page checks. sitemend crawls the whole site for
+indexability: sitemap against pages, orphans, canonicals, duplicates, host consistency.
+It runs Lighthouse itself for Core Web Vitals.
+
+**We use Ahrefs or Screaming Frog.** Those report on the live site after a deploy, for
+whoever does SEO. sitemend blocks the merge, for whoever wrote the change. They work
+well together.
+
+**How is this different from claude-seo?** claude-seo audits live URLs for strategy:
+keywords, AI search, backlinks, a score. sitemend tests your repo in CI for
+regressions, with evidence and no scores. Use claude-seo to decide what to do, and
+sitemend so deploys don't undo it.
+
+**Our site already has hundreds of SEO issues. Won't this fail every PR?** Start with
+`--fail-on critical`, or save a baseline and gate on `sitemend verify --baseline`,
+which fails only on critical or high findings that are new since the baseline.
+
+**Does it need Claude?** No. The CLI and the GitHub Action run anywhere Python 3.9+
+does. Claude Code adds the fix-as-a-diff step.
+
+**Our Next.js site is server-rendered.** Point it at a preview URL and it crawls the real
+responses, including headers and the soft-404 probe. A static build gets the fullest
+coverage, including proof that no page is orphaned.
+
+**Is my code sent anywhere?** No. On a folder it makes no network calls. On a URL it
+only requests your own site.
+
 ## Limitations, stated plainly
 
 - **JS rendering is for live URLs.** `sitemend audit https://... --render` parses
@@ -270,6 +306,9 @@ Findings cite the offending string from your source, so every one is checkable.
   cross-platform behaviour is untested rather than proven. Reports welcome. One opt-in
   test (`SITEMEND_LIGHTHOUSE_TEST=1`) runs real Lighthouse against a local server.
 - **Stage 6 does no off-page work.** By design.
+- **Built for sites up to a few thousand pages.** Duplicate and cannibalization checks
+  compare pages pairwise, so very large sites are slow, and an http crawl stops at
+  `--max-pages`.
 - **The unused-asset check recommends deletion**, so it is deliberately conservative: a
   filename appearing anywhere in any page's source counts as used. Verify before
   deleting anyway — files can be referenced from a CMS or hot-linked externally.

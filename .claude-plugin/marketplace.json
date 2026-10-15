@@ -1,6 +1,6 @@
 {
   "name": "sitemend",
-  "description": "Technical SEO checks for site codebases, for CI and Claude Code.",
+  "description": "SEO regression tests for sites in a repo, for CI and Claude Code.",
   "owner": {
     "name": "surendhar-v",
     "url": "https://github.com/SurendharVr"
@@ -9,7 +9,7 @@
     {
       "name": "sitemend",
       "source": "./",
-      "description": "Catches the deploys that break crawling and indexing, then fixes them as diffs you approve. Ordered gates stop you optimising pages Google cannot index."
+      "description": "SEO regression tests for sites in a repo. Catches deploys that break crawling and indexing, then fixes them as diffs you approve."
     }
   ]
 }

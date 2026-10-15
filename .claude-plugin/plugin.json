@@ -2,7 +2,7 @@
   "name": "sitemend",
   "displayName": "sitemend",
   "version": "1.3.0",
-  "description": "Technical SEO checks for sites that live in a codebase. Catches the changes that break crawling and indexing, proposes each fix as a diff you approve, and re-crawls to prove it landed. Never invents search volume, keyword difficulty or backlink data.",
+  "description": "SEO regression tests for sites that live in a repo. Fails the PR when a change breaks crawling or indexing, cites the exact line, proposes each fix as a diff you approve, and re-crawls to prove it landed. Never invents search volume, keyword difficulty or backlink data.",
   "author": {
     "name": "surendhar-v",
     "url": "https://github.com/SurendharVr"
@@ -11,6 +11,7 @@
   "license": "MIT",
   "keywords": [
     "seo",
+    "seo-testing",
     "seo-audit",
     "technical-seo",
     "seo-tools",
@@ -23,6 +24,8 @@
     "lighthouse",
     "duplicate-content",
     "broken-links",
-    "orphan-pages"
+    "orphan-pages",
+    "ci",
+    "github-actions"
   ]
 }
