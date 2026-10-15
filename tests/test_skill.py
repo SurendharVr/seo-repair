@@ -1796,6 +1796,28 @@ class TestHostMismatch(Base):
         self.assertEqual(self._hit(canonical="https://acme-widgets.com/",
                                    sitemap_host="demo.example.com"), [])
 
+    def test_preview_host_in_whole_sitemap_does_not_become_the_base(self):
+        """fs mode infers the base URL. A sitemap that names only the preview host must
+        not win over production canonicals, or every correct canonical is OFFSITE."""
+        prod, preview = "https://sitemend-demo.dev", "https://x-git-y.vercel.app"
+        for path in ("", "about/", "blog/"):
+            self.fx.write(path + "index.html", page_html(
+                head_extra='<link rel="canonical" href="{0}/{1}">'.format(prod, path)))
+        self.fx.write("sitemap.xml", "<urlset>{0}</urlset>".format("".join(
+            "<url><loc>{0}/{1}</loc></url>".format(preview, p) for p in ("", "about/", "blog/"))))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = crawl.infer_base_url(
+            doc["sitemap"]["urls"], doc["pages"], doc["robots"]["sitemaps"])
+        self.assertEqual(doc["meta"]["base_url"], prod)
+        hits = [(f["id"], f["severity"]) for f in audit.audit(doc)["findings"]
+                if f["id"] in ("S1-HOST-MISMATCH", "S1-CANONICAL-OFFSITE")]
+        self.assertEqual(hits, [("S1-HOST-MISMATCH", "critical")])
+
+    def test_preview_only_site_still_infers_its_own_host(self):
+        """With no production host on offer, inference falls back to the first URL."""
+        self.assertEqual(crawl.infer_base_url(["https://acme.netlify.app/"], [], []),
+                         "https://acme.netlify.app")
+
 
 class TestXRobotsTagNoindex(Base):
     """X-Robots-Tag: noindex on the production homepage (a preview-deploy header that

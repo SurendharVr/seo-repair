@@ -21,9 +21,29 @@ from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
+import audit
 import seolib as S
 
 BOILERPLATE_TAGS = ("script", "style", "noscript", "template", "svg")
+
+
+def infer_base_url(sm_urls, pages, robots_sitemaps):
+    """Production origin from the sitemap, a canonical or the robots Sitemap line.
+
+    A preview or placeholder host is skipped while a real one is on offer: a deploy that
+    leaks *.vercel.app into the whole sitemap still names production in its canonicals,
+    and taking the preview as the base made every correct canonical CANONICAL-OFFSITE.
+    """
+    cands = [u for u in (sm_urls[0] if sm_urls else None,
+                         next((p["canonical"] for p in pages if p.get("canonical")), None),
+                         robots_sitemaps[0] if robots_sitemaps else None)
+             if u and u.startswith("http")]
+    real = [u for u in cands if not audit.is_placeholder_host(urlsplit(u).hostname)
+            and not (urlsplit(u).hostname or "").endswith(audit.PREVIEW_HOSTS)]
+    if not (real or cands):
+        return None
+    sp = urlsplit((real or cands)[0])
+    return "{0}://{1}".format(sp.scheme, sp.netloc)
 
 
 def read_text(path):
@@ -778,15 +798,7 @@ def main():
     robots = S.Robots(robots_txt)
     sm_urls, sm_errs = S.parse_sitemap(sitemap_xml)
 
-    # Infer production origin from sitemap/canonical when not supplied.
-    base_url = args.base_url
-    if not base_url:
-        for cand in (sm_urls[0] if sm_urls else None,
-                     next((p["canonical"] for p in pages if p.get("canonical")), None)):
-            if cand and cand.startswith("http"):
-                sp = urlsplit(cand)
-                base_url = "{0}://{1}".format(sp.scheme, sp.netloc)
-                break
+    base_url = args.base_url or infer_base_url(sm_urls, pages, robots.sitemaps)
 
     # Mark robots.txt crawl-blocking per page.
     for p in pages:
