@@ -92,11 +92,22 @@ def main():
                                        help="findings.json from an earlier audit")
     args = ap.parse_args()
 
+    baseline = None
+    if args.cmd == "verify":
+        # Read the baseline before auditing. The README's own example keeps it in the
+        # default --out folder, where the audit below overwrites findings.json, and a
+        # baseline compared with itself always passes.
+        with open(args.baseline, encoding="utf-8") as f:
+            baseline = f.read()
+
     findings = audit(args.target, args.out, args.max_pages, args.site_name,
                      args.render, args.render_limit)
     regressed = False
     if args.cmd == "verify":
-        r = run("verify.py", "--baseline", args.baseline, "--current", findings,
+        base_copy = os.path.join(args.out, "baseline-findings.json")
+        with open(base_copy, "w", encoding="utf-8") as f:
+            f.write(baseline)
+        r = run("verify.py", "--baseline", base_copy, "--current", findings,
                 "--out", os.path.join(args.out, "verify.json"), ok=(0, 1))
         print(r.stdout.rstrip())
         regressed = r.returncode == 1

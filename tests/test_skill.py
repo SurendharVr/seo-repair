@@ -487,6 +487,24 @@ class TestCli(Base):
         self.assertEqual(sorted(os.listdir(self.fx.root)), before, "audit must not touch the site")
         self.assertGreaterEqual(sitemend.worst_open(findings), -1)
 
+    def test_verify_with_the_baseline_inside_out_still_compares(self):
+        """REGRESSION found by the 2026-10-16 audit: README's `verify --baseline
+        sitemend-out/findings.json` uses the default --out sitemend-out, so the audit
+        overwrote the baseline before verify.py read it, and the gate always passed."""
+        self.fx.write("index.html", page_html())
+        out = os.path.join(tempfile.mkdtemp(prefix="sitemend-out-"), "o")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        sitemend.audit(self.fx.root, out, 200, None)
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="/gone/">x</a> ' + "word " * 300 + "</p>"))
+        r = subprocess.run(
+            [sys.executable, os.path.join(sitemend.HERE, "sitemend.py"), "verify", self.fx.root,
+             "--baseline", os.path.join(out, "findings.json"), "--out", out],
+            capture_output=True, text=True, encoding="utf-8",
+            env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+        self.assertIn("REGRESSION GATE: FAIL", r.stdout)
+        self.assertNotEqual(r.returncode, 0)
+
     def test_rerun_does_not_audit_its_own_report(self):
         """REGRESSION: with --out inside the audited folder (the default when run as
         `audit .`), the second run crawled the first run's dashboard.html and reported
