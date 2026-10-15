@@ -757,6 +757,13 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
                 if nxt not in seen:
                     queue.append(nxt)
 
+    # --max-pages stopped the walk with URLs still queued. They were never fetched, so
+    # whether they exist is unknown: audit.py must not report them as sitemap orphans or
+    # broken links, and the link graph it builds is partial.
+    for path in dict.fromkeys(q for q in queue if q not in seen):
+        skipped.append({"url": path, "reason": "not crawled: --max-pages reached",
+                        "not_crawled": True})
+
     for p in pages:
         extra = redirect_aliases.get(p["url"])
         if extra:
@@ -866,8 +873,12 @@ def main():
             sum(1 for p in pages if p.get("rendered")), len(pages)))
     if excluded:
         print("excluded build dirs: " + ", ".join("{0} ({1} files)".format(e["dir"], e["files"]) for e in excluded))
-    if skipped:
-        print("skipped {0} files".format(len(skipped)))
+    not_crawled = sum(1 for s in skipped if s.get("not_crawled"))
+    if not_crawled:
+        print("stopped at --max-pages {0}: {1} queued URL(s) not crawled, and not reported "
+              "as missing".format(args.max_pages, not_crawled))
+    if len(skipped) > not_crawled:
+        print("skipped {0} files".format(len(skipped) - not_crawled))
     print("wrote " + args.out)
 
 

@@ -2028,9 +2028,9 @@ def serve(test, routes):
     return "http://127.0.0.1:%d/" % srv.server_address[1]
 
 
-def http_doc(base):
+def http_doc(base, max_pages=300):
     """crawl_http plus the robots/sitemap blocks crawl.main() would build."""
-    (pages, _, robots, sitemap, _, _, skipped, _, _) = crawl.crawl_http(base)
+    (pages, _, robots, sitemap, _, _, skipped, _, _) = crawl.crawl_http(base, max_pages)
     rb = S.Robots(robots)
     for p in pages:
         p["robots_allowed"], p["robots_rule"] = rb.check(p["url"])
@@ -2088,6 +2088,28 @@ STUB = ('<!doctype html><html><head><meta http-equiv="refresh" content="{0}">'
         '</head><body></body></html>')
 ON_PAGE = {"S3-TITLE-MISSING", "S3-VIEWPORT-MISSING", "S2-H1-MISSING", "S3-DESC-MISSING",
            "S1-CANONICAL-MISSING", "S3-LANG-MISSING", "S3-OG-MISSING", "S3-THIN"}
+
+
+class TestHttpMaxPagesTruncation(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: with --max-pages 5 on a 13-page site,
+    the 8 pages never fetched were reported as high S1-SITEMAP-ORPHAN ("does not
+    exist") and high S1-BROKEN-LINK. Not crawled is unknown, not missing."""
+
+    def test_uncrawled_urls_are_not_reported_missing(self):
+        links = "".join('<a href="/p{0}/">p{0}</a> '.format(i) for i in range(8))
+        routes = {"/": (200, "text/html", page_html(
+            body="<h1>H</h1><p>" + links + "word " * 300 + "</p>"), {})}
+        for i in range(8):
+            routes["/p%d/" % i] = (200, "text/html", page_html(
+                title="Page %d With A Long Enough Title Here" % i,
+                body='<h1>P</h1><p><a href="/">home</a> ' + ("w%d " % i) * 300 + "</p>"), {})
+        routes["/sitemap.xml"] = (200, "application/xml", "<urlset>" + "".join(
+            "<url><loc>https://x.org/p%d/</loc></url>" % i for i in range(8)) + "</urlset>", {})
+        doc = http_doc(serve(self, routes), max_pages=3)
+        self.assertTrue(any(s.get("not_crawled") for s in doc["meta"]["skipped"]))
+        ids = [f["id"] for f in audit.audit(doc)["findings"]]
+        for fid in ("S1-SITEMAP-ORPHAN", "S1-BROKEN-LINK", "S2-ORPHAN", "S2-UNREACHABLE"):
+            self.assertNotIn(fid, ids)
 
 
 class TestMetaRefresh(Base):

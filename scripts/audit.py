@@ -190,9 +190,14 @@ def audit(doc, vitals=None, schema_findings=None):
                            evidence=doc["robots"]["raw"][:200], recipe="robots-add-sitemap"))
 
     sitemap_paths = {path_of(u) for u in doc["sitemap"]["urls"]}
+    # URLs an http crawl queued but never fetched because --max-pages ran out. Whether
+    # they exist is unknown, so no finding may say they don't, and the link graph is
+    # partial, so orphan and click-depth findings are withheld for the whole run.
+    not_crawled = {S.canonical_http_path(s["url"]) for s in doc["meta"].get("skipped") or []
+                   if s.get("not_crawled")}
 
     for sp in sorted(sitemap_paths):
-        if sp not in alias:
+        if sp not in alias and S.canonical_http_path(sp) not in not_crawled:
             out.append(finding("S1-SITEMAP-ORPHAN", 1, "high",
                                "URL listed in sitemap.xml does not exist in the crawl.", [sp],
                                evidence="<loc>{0}</loc>".format(sp), recipe="sitemap-prune"))
@@ -338,7 +343,7 @@ def audit(doc, vitals=None, schema_findings=None):
             if l["kind"] != "internal":
                 continue
             t = S.norm_path(l["resolved"])
-            if t in alias or t in assets:
+            if t in alias or t in assets or S.canonical_http_path(t) in not_crawled:
                 continue
             if re.search(r"\.(css|js|png|jpe?g|webp|svg|ico|pdf|txt|xml|woff2?|mp4|webm)$", t, re.I):
                 continue
@@ -538,7 +543,7 @@ def audit(doc, vitals=None, schema_findings=None):
 
     for p in pages:
         u = p["url"]
-        if u == home:
+        if u == home or not_crawled:
             continue
         ok, _ = indexable[u]
         if not inlinks[u] and ok:
