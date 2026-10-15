@@ -1828,6 +1828,24 @@ class TestVitalsCommand(unittest.TestCase):
         self.assertEqual(os.path.getsize(tick), before, "the grandchild is still running")
 
 
+class TestLighthouseSandbox(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: Lighthouse's Chrome always ran with
+    --no-sandbox; the render path drops the sandbox only as root or on opt-out."""
+
+    def flags(self, **kw):
+        cmd = vitals.lighthouse_cmd("http://h/", "o.json", "mobile", **kw)
+        return next(a for a in cmd if a.startswith("--chrome-flags="))
+
+    def test_sandbox_is_kept_by_default(self):
+        self.assertNotIn("--no-sandbox", self.flags(nt=False, root=False, env={}))
+        self.assertNotIn("--no-sandbox", self.flags(nt=True, root=False, env={}))
+
+    def test_root_or_the_opt_out_drops_it(self):
+        self.assertIn("--no-sandbox", self.flags(nt=False, root=True, env={}))
+        self.assertIn("--no-sandbox", self.flags(nt=False, root=False,
+                                                 env={"SITEMEND_NO_SANDBOX": "1"}))
+
+
 @unittest.skipUnless(os.environ.get("SITEMEND_LIGHTHOUSE_TEST") == "1",
                      "set SITEMEND_LIGHTHOUSE_TEST=1 (needs npx, Lighthouse and Chrome)")
 class TestVitalsLive(unittest.TestCase):

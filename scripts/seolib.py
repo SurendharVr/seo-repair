@@ -299,21 +299,29 @@ def find_chrome():
     return next((p for p in CHROME_PATHS if os.path.isfile(p)), None)
 
 
+def no_sandbox(nt=None, root=None, env=None):
+    """Whether Chrome must run with --no-sandbox, which runs the audited site's
+    JavaScript without Chrome's sandbox: only as root (Chrome refuses to start
+    otherwise) or when SITEMEND_NO_SANDBOX=1 (containers, some CI images).
+    nt/root/env are parameters so tests need no particular OS."""
+    nt = os.name == "nt" if nt is None else nt
+    env = os.environ if env is None else env
+    root = (not nt and os.geteuid() == 0) if root is None else root
+    return not nt and bool(root or env.get("SITEMEND_NO_SANDBOX") == "1")
+
+
 def chrome_cmd(chrome, url, profile, nt=None, root=None, env=None):
     """The headless-Chrome command line. --no-sandbox runs the audited site's JavaScript
     without Chrome's sandbox, so it is added only for root (Chrome refuses to start as
     root otherwise) or when SITEMEND_NO_SANDBOX=1 (containers, some CI images).
     nt/root/env are parameters so tests need no particular OS."""
-    nt = os.name == "nt" if nt is None else nt
-    env = os.environ if env is None else env
-    root = (not nt and os.geteuid() == 0) if root is None else root
     # A fresh profile otherwise starts component-updater and other background fetches
     # on launch; they are not the page's own requests and only cost time on a slow
     # network. Puppeteer and Lighthouse launch Chrome with the same two flags.
     cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
            "--disable-background-networking", "--disable-component-update",
            "--user-data-dir=" + profile, "--virtual-time-budget=8000", "--dump-dom", url]
-    if not nt and (root or env.get("SITEMEND_NO_SANDBOX") == "1"):
+    if no_sandbox(nt, root, env):
         cmd.insert(1, "--no-sandbox")
     return cmd
 
