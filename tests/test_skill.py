@@ -863,6 +863,32 @@ class TestVerify(unittest.TestCase):
         return {"id": fid, "pages": pages, "evidence": evidence,
                 "severity": severity, "stage": stage, "message": fid}
 
+    def test_a_judgement_call_is_advisory_and_never_fails_the_gate(self):
+        """REGRESSION found by the 2026-10-16 review: adding an hx-patch reference page
+        next to hx-get/hx-post/hx-put failed the PR with three high S3-CANNIBALIZATION
+        findings. Cannibalization is a judgement (confidence medium); it is reported
+        as advisory and only measured findings fail the gate."""
+        d = tempfile.mkdtemp(prefix="sitemend-verify-")
+        self.addCleanup(shutil.rmtree, d, True)
+        guess = dict(self.f("S3-CANNIBALIZATION", ["/hx-get/", "/hx-patch/"]), confidence="medium")
+        paths = {}
+        for name, items in (("b", []), ("c", [guess])):
+            paths[name] = os.path.join(d, name + ".json")
+            with open(paths[name], "w") as fh:
+                json.dump({"findings": items}, fh)
+        r = sitemend.run("verify.py", "--baseline", paths["b"], "--current", paths["c"],
+                         "--out", os.path.join(d, "v.json"), ok=(0, 1))
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("REGRESSION GATE: PASS", r.stdout)
+        with open(os.path.join(d, "v.md"), encoding="utf-8") as fh:
+            self.assertIn("| high (advisory) | S3-CANNIBALIZATION", fh.read())
+
+    def test_a_measured_high_finding_still_fails_the_gate(self):
+        self.assertTrue(V.blocks(self.f("S1-BROKEN-LINK", ["/"])))
+        self.assertTrue(V.blocks(dict(self.f("S1-BROKEN-LINK", ["/"]), confidence="high")))
+        self.assertFalse(V.blocks(dict(self.f("S3-NEAR-DUPLICATE", ["/a", "/b"]), confidence="medium")))
+        self.assertFalse(V.blocks(self.f("S3-THIN", ["/a"], severity="medium")))
+
     def test_shrinking_page_list_is_changed_not_new(self):
         """REGRESSION: when a grouped finding's page list shrank after a partial fix,
         it read as one finding closed plus one brand-new finding -- wrong and
