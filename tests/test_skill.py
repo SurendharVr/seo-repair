@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
@@ -390,6 +391,126 @@ class TestGrouping(Base):
                         "Book a Chennai wedding reception hall with parking.", tag)
         self.assertEqual(self._cannibal_pairs(),
                          {frozenset(("/wedding-a/", "/wedding-b/"))})
+
+    def test_grouping_a_site_wide_finding_is_linear(self):
+        """A finding with the same evidence on every page (no breadcrumbs, no Open Graph
+        tags) groups into one. Checking membership in the page list made that quadratic:
+        17 s for 40,000 pages, and 9 s of a 10,000-page audit."""
+        fs = [{"id": "S2-BREADCRUMB-MISSING", "pages": ["/p%d" % i],
+               "evidence": "jsonld types: none", "severity": "low", "stage": 2,
+               "message": "m"} for i in range(40000)]
+        fs.append(dict(fs[0]))                     # the same page twice counts once
+        t = time.perf_counter()
+        grouped = audit.group_findings(fs)
+        self.assertLess(time.perf_counter() - t, 3.0)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["affects"], 40000)
+        self.assertEqual(len(grouped[0]["pages"]), 40000)
+
+
+class TestPairwiseCandidates(unittest.TestCase):
+    """The near-duplicate and cannibalization checks compare only candidate pairs. The
+    filters must be lossless at the current thresholds: a pair the exhaustive loop would
+    report and the filter drops is a silent false negative, the worst kind for a tool
+    whose findings have to be trusted."""
+
+    def _sig_pages(self, seed=11):
+        import random
+        rnd = random.Random(seed)
+        pages = []
+        for _ in range(12):                       # 12 clusters of 25 around a base
+            base = [rnd.getrandbits(61) for _ in range(S.MINHASH_N)]
+            for _ in range(25):
+                sig = list(base)
+                for pos in rnd.sample(range(S.MINHASH_N), rnd.randint(0, 30)):
+                    sig[pos] = rnd.getrandbits(61)
+                pages.append({"minhash": sig, "word_count": 400})
+        return pages
+
+    def test_near_duplicate_candidates_include_every_pair_at_the_threshold(self):
+        pages = self._sig_pages()
+        cand = set(audit.near_dup_candidates(pages))
+        hits = 0
+        for i in range(len(pages)):
+            for j in range(i + 1, len(pages)):
+                sim = S.minhash_similarity(pages[i]["minhash"], pages[j]["minhash"])
+                if sim >= audit.NEAR_DUP:
+                    hits += 1
+                    self.assertIn((i, j), cand, "pair at {0:.3f} not compared".format(sim))
+        self.assertGreater(hits, 100, "fixture must put pairs on both sides of 0.80")
+
+    def test_worst_case_near_duplicate_is_a_candidate(self):
+        """12 differing values, one in each of the first 12 bands: the most a pair at
+        0.80 can differ. Only the last four bands still match."""
+        a = list(range(S.MINHASH_N))
+        b = list(a)
+        r = S.MINHASH_N // audit.BANDS
+        for band in range(12):
+            b[band * r] = -1
+        self.assertGreaterEqual(S.minhash_similarity(a, b), audit.NEAR_DUP)
+        pages = [{"minhash": a, "word_count": 400}, {"minhash": b, "word_count": 400}]
+        self.assertEqual(audit.near_dup_candidates(pages), [(0, 1)])
+
+    def test_unrelated_pages_are_not_candidates(self):
+        """The point of the filter: 300 unrelated pages give no candidates."""
+        import random
+        rnd = random.Random(5)
+        pages = [{"minhash": [rnd.getrandbits(61) for _ in range(S.MINHASH_N)],
+                  "word_count": 400} for _ in range(300)]
+        self.assertEqual(audit.near_dup_candidates(pages), [])
+
+    def test_short_pages_are_not_candidates(self):
+        sig = list(range(S.MINHASH_N))
+        pages = [{"minhash": sig, "word_count": 400}, {"minhash": sig, "word_count": 49}]
+        self.assertEqual(audit.near_dup_candidates(pages), [])
+
+    def _jaccard(self, a, b):
+        return len(a & b) / len(a | b)
+
+    def _term_sets(self, seed=3, n=600):
+        """Template words on a quarter of the pages each (under the 35% boiler cut),
+        clusters sharing 6 to 11 of 12 terms, Zipf filler."""
+        import random
+        rnd = random.Random(seed)
+        vocab = ["t%d" % i for i in range(800)]
+        weights = [1 / (i + 1) for i in range(800)]
+        sigs, urls = {}, []
+        for i in range(n):
+            s = {"section%d" % (i % 4)}
+            if i < 240:
+                core = random.Random(i // 12).sample(vocab[100:], 12)
+                s |= set(core[:rnd.randint(6, 11)])
+            while len(s) < 12:
+                s.add(rnd.choices(vocab, weights)[0])
+            urls.append("/%d" % i)
+            sigs[urls[-1]] = s
+        return urls, sigs
+
+    def test_cannibal_candidates_include_every_pair_at_the_threshold(self):
+        urls, sigs = self._term_sets()
+        cand = set(audit.cannibal_candidates(urls, sigs))
+        hits = 0
+        for i in range(len(urls)):
+            for j in range(i + 1, len(urls)):
+                if self._jaccard(sigs[urls[i]], sigs[urls[j]]) >= audit.CANNIBAL_TERMS:
+                    hits += 1
+                    self.assertIn((i, j), cand)
+        self.assertGreater(hits, 100, "fixture must put pairs on both sides of 0.60")
+
+    def test_cannibal_candidates_handle_short_and_empty_sets(self):
+        """After template words are removed a page can keep 1 or 0 terms. One shared
+        term out of one is Jaccard 1.0 and must be compared; an empty set never is."""
+        urls = ["/a", "/b", "/c"]
+        sigs = {"/a": {"widget"}, "/b": {"widget"}, "/c": set()}
+        self.assertEqual(audit.cannibal_candidates(urls, sigs), [(0, 1)])
+
+    def test_templated_terms_do_not_make_every_pair_a_candidate(self):
+        """Guard against the rejected design: indexing every term makes 71% of these
+        pairs candidates (prefix filtering: 4%), and on a 4,000-page templated set it
+        ran slower than comparing every pair."""
+        urls, sigs = self._term_sets()
+        total = len(urls) * (len(urls) - 1) // 2
+        self.assertLess(len(audit.cannibal_candidates(urls, sigs)), total // 10)
 
 
 # --------------------------------------------------------------- thresholds

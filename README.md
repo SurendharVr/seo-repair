@@ -317,9 +317,9 @@ only requests your own site.
   cross-platform behaviour is untested rather than proven. Reports welcome. One opt-in
   test (`SITEMEND_LIGHTHOUSE_TEST=1`) runs real Lighthouse against a local server.
 - **Stage 6 does no off-page work.** By design.
-- **Built for sites up to a few thousand pages.** Duplicate and cannibalization checks
-  compare pages pairwise, so very large sites are slow, and an http crawl stops at
-  `--max-pages`.
+- **An http crawl stops at `--max-pages`.** fs mode has no page cap. The duplicate and
+  cannibalization checks compare only pairs that could match, so once a 10,000-page
+  folder is crawled (7 to 10 minutes) the audit takes about 10 seconds.
 - **The unused-asset check recommends deletion**, so it is deliberately conservative: a
   filename appearing anywhere in any page's source counts as used. Verify before
   deleting anyway — files can be referenced from a CMS or hot-linked externally.

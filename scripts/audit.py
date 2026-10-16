@@ -11,8 +11,10 @@ import argparse
 import datetime
 import itertools
 import json
+import math
 import re
 from collections import defaultdict
+from fractions import Fraction
 from urllib.parse import urlsplit
 
 import seolib as S
@@ -24,6 +26,14 @@ TITLE_FLAG = 65          # target is 50-60; only flag past the point Google actu
 DESC_MIN, DESC_MAX = 70, 160
 THIN_WORDS = 250
 NEAR_DUP = 0.80          # minhash Jaccard estimate
+# Near-duplicate candidates: the 64 minhash values in BANDS bands. A pair at NEAR_DUP
+# differs in at most MINHASH_N - ceil(NEAR_DUP * MINHASH_N) values (12), and that many
+# differences cannot break more than 12 bands, so with 16 one band always matches and
+# every pair at the threshold is compared. NEAR_DUP at 0.75 or lower breaks this:
+# the assert below stops the import rather than let pairs go silently unchecked.
+BANDS = 16
+assert S.MINHASH_N % BANDS == 0 and \
+    BANDS > S.MINHASH_N - math.ceil(Fraction(str(NEAR_DUP)) * S.MINHASH_N)
 CANNIBAL_TERMS = 0.60
 IMG_HEAVY_BYTES = 200 * 1024
 MAX_DEPTH = 3
@@ -53,6 +63,50 @@ def top_terms(text, n=15):
     for w in words:
         freq[w] += 1
     return {w for w, _ in sorted(freq.items(), key=lambda kv: -kv[1])[:n]}
+
+
+def _bucket_pairs(buckets):
+    """Index pairs (i < j) that share any bucket, sorted so findings keep the order
+    of the exhaustive loop."""
+    pairs = set()
+    for idx in buckets.values():
+        for x, i in enumerate(idx):
+            for j in idx[x + 1:]:
+                pairs.add((i, j))
+    return sorted(pairs)
+
+
+def near_dup_candidates(pages):
+    """Pairs of pages that share at least one whole band of minhash values. Every pair
+    at or above NEAR_DUP is among them (see BANDS)."""
+    r = S.MINHASH_N // BANDS
+    buckets = defaultdict(list)
+    for i, p in enumerate(pages):
+        sig = p.get("minhash")
+        if p["word_count"] < 50 or not sig or len(sig) != S.MINHASH_N:
+            continue
+        for band in range(BANDS):
+            buckets[(band, tuple(sig[band * r:(band + 1) * r]))].append(i)
+    return _bucket_pairs(buckets)
+
+
+def cannibal_candidates(urls, sigs):
+    """Pairs whose term sets could reach CANNIBAL_TERMS Jaccard. Jaccard >= t needs
+    |A & B| >= ceil(t * |A|), so with every set sorted rarest term first, two such sets
+    share a term among the first |A| - ceil(t * |A|) + 1 of each (prefix filtering).
+    Only those terms are indexed; common terms, which would pair up most of a
+    templated site, sort last and drop out."""
+    t = Fraction(str(CANNIBAL_TERMS))
+    df = defaultdict(int)
+    for u in urls:
+        for w in sigs[u]:
+            df[w] += 1
+    buckets = defaultdict(list)
+    for i, u in enumerate(urls):
+        terms = sorted(sigs[u], key=lambda w: (df[w], w))
+        for w in terms[:len(terms) - math.ceil(t * len(terms)) + 1]:
+            buckets[w].append(i)
+    return _bucket_pairs(buckets)
 
 
 UTILITY_RE = re.compile(r"/(404|403|500|offline|thank-?you|thanks)(\.html?)?/?$", re.I)
@@ -644,20 +698,18 @@ def audit(doc, vitals=None, schema_findings=None):
                                sorted(urls), evidence="identical text fingerprint " + fp[:12],
                                recipe="consolidate-pages"))
     seen_pairs = {frozenset(u) for u in by_fp.values() if len(u) > 1} | alt_pairs
-    for i, a in enumerate(live):
-        for b in live[i + 1:]:
-            if frozenset((a["url"], b["url"])) in seen_pairs:
-                continue
-            if a["word_count"] < 50 or b["word_count"] < 50:
-                continue
-            sim = S.minhash_similarity(a.get("minhash"), b.get("minhash"))
-            if sim >= NEAR_DUP:
-                seen_pairs.add(frozenset((a["url"], b["url"])))
-                out.append(finding("S3-NEAR-DUPLICATE", 3, "high",
-                                   "Pages are {0}% similar in main content.".format(int(sim * 100)),
-                                   [a["url"], b["url"]],
-                                   evidence="estimated Jaccard {0:.2f}".format(sim),
-                                   recipe="consolidate-pages", confidence="medium"))
+    for i, j in near_dup_candidates(live):
+        a, b = live[i], live[j]
+        if frozenset((a["url"], b["url"])) in seen_pairs:
+            continue
+        sim = S.minhash_similarity(a.get("minhash"), b.get("minhash"))
+        if sim >= NEAR_DUP:
+            seen_pairs.add(frozenset((a["url"], b["url"])))
+            out.append(finding("S3-NEAR-DUPLICATE", 3, "high",
+                               "Pages are {0}% similar in main content.".format(int(sim * 100)),
+                               [a["url"], b["url"]],
+                               evidence="estimated Jaccard {0:.2f}".format(sim),
+                               recipe="consolidate-pages", confidence="medium"))
 
     # cannibalization: same intent signals on two pages
     sigs = {}
@@ -679,20 +731,18 @@ def audit(doc, vitals=None, schema_findings=None):
     boiler = {w for w, n in df.items() if n >= max(4, 0.35 * len(urls))}
     for u in urls:
         sigs[u] -= boiler
-    for i, a in enumerate(urls):
-        for b in urls[i + 1:]:
-            if frozenset((a, b)) in seen_pairs:
-                continue          # already reported as a duplicate; same root cause
-            if not sigs[a] or not sigs[b]:
-                continue
-            inter = sigs[a] & sigs[b]
-            union = sigs[a] | sigs[b]
-            j = len(inter) / len(union) if union else 0
-            if j >= CANNIBAL_TERMS:
-                out.append(finding("S3-CANNIBALIZATION", 3, "high",
-                                   "Two pages target near-identical head terms ({0}% overlap).".format(int(j * 100)),
-                                   [a, b], evidence="shared terms: " + ", ".join(sorted(inter)[:8]),
-                                   recipe="keyword-map", confidence="medium"))
+    for ia, ib in cannibal_candidates(urls, sigs):
+        a, b = urls[ia], urls[ib]
+        if frozenset((a, b)) in seen_pairs:
+            continue          # already reported as a duplicate; same root cause
+        inter = sigs[a] & sigs[b]
+        union = sigs[a] | sigs[b]
+        j = len(inter) / len(union) if union else 0
+        if j >= CANNIBAL_TERMS:
+            out.append(finding("S3-CANNIBALIZATION", 3, "high",
+                               "Two pages target near-identical head terms ({0}% overlap).".format(int(j * 100)),
+                               [a, b], evidence="shared terms: " + ", ".join(sorted(inter)[:8]),
+                               recipe="keyword-map", confidence="medium"))
 
     titles, descs = defaultdict(list), defaultdict(list)
     for p in live:
@@ -931,7 +981,7 @@ def group_findings(findings):
     not five defects because it renders on five pages. Grouping keeps the fix list
     honest about how much work there actually is.
     """
-    grouped, order = {}, []
+    grouped, order, members = {}, [], {}
     for f in findings:
         # Only single-page findings may merge. A finding that already names several
         # pages is inherently ABOUT that specific set -- two unrelated page pairs that
@@ -947,11 +997,13 @@ def group_findings(findings):
         if key in grouped:
             g = grouped[key]
             for u in f["pages"]:
-                if u not in g["pages"]:
+                if u not in members[key]:
+                    members[key].add(u)
                     g["pages"].append(u)
         else:
             g = dict(f, pages=list(f["pages"]))
             grouped[key] = g
+            members[key] = set(g["pages"])
             order.append(key)
     out = []
     for key in order:
