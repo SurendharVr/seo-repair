@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **A stability policy for the gate.** `RELEASING.md` now says what each kind of release
+  may change: patches never change which findings are emitted or their severity, any rule,
+  threshold or severity change is a minor release whose entry names the affected rule IDs,
+  and the Action inputs, `findings.json` shape and CLI flags change only in a major
+  release. The README's Action section summarizes it. No behaviour changed.
+
 ## 1.5.2 - 2026-10-16
 
 The example workflows and README pin `@v1.5.2`. The three crawler fixes came out of scanning 20
