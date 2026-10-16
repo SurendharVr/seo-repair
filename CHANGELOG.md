@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 - 2026-10-17
+
+The example workflows and README pin `@v1.6.0`. This is the first release under the stability
+policy, and a minor one because waivers change which findings fail the gate. No rule,
+threshold or severity changed.
 
 - **Per-finding waivers.** A `.sitemend-waivers.json` names deliberate exceptions, each with
   one exact rule ID, a page-path pattern, a required reason and an optional expiry date. A
