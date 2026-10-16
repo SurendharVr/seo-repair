@@ -1,3 +1,5 @@
+# The same dependencies as pyproject.toml; keep the two in sync.
+
 # Core crawler and auditor.
 beautifulsoup4>=4.9
 lxml>=4.6
