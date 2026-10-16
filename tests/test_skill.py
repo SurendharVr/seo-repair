@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
@@ -390,6 +391,21 @@ class TestGrouping(Base):
                         "Book a Chennai wedding reception hall with parking.", tag)
         self.assertEqual(self._cannibal_pairs(),
                          {frozenset(("/wedding-a/", "/wedding-b/"))})
+
+    def test_grouping_a_site_wide_finding_is_linear(self):
+        """A finding with the same evidence on every page (no breadcrumbs, no Open Graph
+        tags) groups into one. Checking membership in the page list made that quadratic:
+        17 s for 40,000 pages, and 9 s of a 10,000-page audit."""
+        fs = [{"id": "S2-BREADCRUMB-MISSING", "pages": ["/p%d" % i],
+               "evidence": "jsonld types: none", "severity": "low", "stage": 2,
+               "message": "m"} for i in range(40000)]
+        fs.append(dict(fs[0]))                     # the same page twice counts once
+        t = time.perf_counter()
+        grouped = audit.group_findings(fs)
+        self.assertLess(time.perf_counter() - t, 3.0)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["affects"], 40000)
+        self.assertEqual(len(grouped[0]["pages"]), 40000)
 
 
 class TestPairwiseCandidates(unittest.TestCase):

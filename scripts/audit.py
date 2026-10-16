@@ -981,7 +981,7 @@ def group_findings(findings):
     not five defects because it renders on five pages. Grouping keeps the fix list
     honest about how much work there actually is.
     """
-    grouped, order = {}, []
+    grouped, order, members = {}, [], {}
     for f in findings:
         # Only single-page findings may merge. A finding that already names several
         # pages is inherently ABOUT that specific set -- two unrelated page pairs that
@@ -997,11 +997,13 @@ def group_findings(findings):
         if key in grouped:
             g = grouped[key]
             for u in f["pages"]:
-                if u not in g["pages"]:
+                if u not in members[key]:
+                    members[key].add(u)
                     g["pages"].append(u)
         else:
             g = dict(f, pages=list(f["pages"]))
             grouped[key] = g
+            members[key] = set(g["pages"])
             order.append(key)
     out = []
     for key in order:
