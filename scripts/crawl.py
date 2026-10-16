@@ -592,6 +592,20 @@ def fetch_site_files(sess, origin, timeout):
     return robots_txt, discover_sitemap(robots_txt, get)
 
 
+def extra_headers(env=None):
+    """Request headers from SITEMEND_HTTP_HEADERS, one "Name: value" per line: for example
+    the bypass header a Vercel preview behind Deployment Protection needs, or basic auth for
+    a staging server. Read from the environment and never from the command line, so a
+    secret does not show in process listings, CI logs or crawl.json."""
+    env = os.environ if env is None else env
+    out = {}
+    for line in (env.get("SITEMEND_HTTP_HEADERS") or "").splitlines():
+        name, sep, value = line.partition(":")
+        if sep and name.strip():
+            out[name.strip()] = value.strip()
+    return out
+
+
 def probe_soft404(start, timeout=20):
     """Request one path that cannot exist. A site that answers it with 200 serves
     "not found" as a real page, and every mistyped or deleted URL becomes an indexable
@@ -602,7 +616,8 @@ def probe_soft404(start, timeout=20):
     path = "/sitemend-404-probe-" + secrets.token_hex(6)
     try:
         r = requests.get(origin + path, timeout=timeout, allow_redirects=True,
-                         headers={"User-Agent": "sitemend-crawler/1.0 (+local audit)"})
+                         headers=dict({"User-Agent": "sitemend-crawler/1.0 (+local audit)"},
+                                      **extra_headers()))
     except Exception as e:
         return {"path": path, "status": None, "error": str(e)[:200]}
     return {"path": path, "status": r.status_code, "final_url": r.url,
@@ -630,6 +645,7 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
 
     sess = requests.Session()
     sess.headers["User-Agent"] = "sitemend-crawler/1.0 (+local audit)"
+    sess.headers.update(extra_headers())
     # Crawl the origin the start URL lands on. apex -> www and http -> https are how a
     # site is served, not off-site links: taking the typed origin skipped every page as
     # "redirects off-site" and the crawl came back empty.

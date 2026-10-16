@@ -2816,5 +2816,53 @@ class TestCheckCommand(unittest.TestCase):
         with open(os.path.join(out, "verify.json"), encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["new"], [])
 
+class TestExtraHeaders(unittest.TestCase):
+    """A Vercel preview behind Deployment Protection answers 401 until the request carries
+    its bypass header. The header comes from SITEMEND_HTTP_HEADERS, never the command line."""
+
+    def test_parses_name_value_lines(self):
+        env = {"SITEMEND_HTTP_HEADERS": "x-vercel-protection-bypass: s3cret\n\nbad line\nX-A:b:c\n"}
+        self.assertEqual(crawl.extra_headers(env), {"x-vercel-protection-bypass": "s3cret", "X-A": "b:c"})
+        self.assertEqual(crawl.extra_headers({}), {})
+
+    def test_a_protected_preview_is_crawled_with_the_header(self):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+        home = page_html().encode()
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                ok = self.headers.get("x-vercel-protection-bypass") == "s3cret" and self.path == "/"
+                body = home if ok else b"nope"
+                self.send_response(200 if ok else 401)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        base = "http://127.0.0.1:%d/" % srv.server_address[1]
+        self.assertEqual(crawl.crawl_http(base)[0], [])
+        old = os.environ.get("SITEMEND_HTTP_HEADERS")
+        os.environ["SITEMEND_HTTP_HEADERS"] = "x-vercel-protection-bypass: s3cret"
+        try:
+            self.assertEqual([p["url"] for p in crawl.crawl_http(base)[0]], ["/"])
+        finally:
+            if old is None:
+                os.environ.pop("SITEMEND_HTTP_HEADERS")
+            else:
+                os.environ["SITEMEND_HTTP_HEADERS"] = old
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
