@@ -8,6 +8,29 @@
   --disable-component-update`, so a fresh profile does not spend launch time on its own
   update fetches. The render test reports the render error (for example "render timed out
   after 30s") instead of a `KeyError`.
+- **The regression gate catches what it missed.** A new finding with the same rule on a
+  page that already had one (a different broken link, a different wrong canonical) is new,
+  not "changed", and a finding that gets worse (high to critical) fails the gate.
+  `sitemend verify` reads `--baseline` before auditing, so the README's own example, which
+  keeps the baseline in the default `--out` folder, no longer compares it with itself.
+- **No more empty http audits.** A start URL that redirects to another host (apex to `www`,
+  `http` to `https`) is crawled where it lands, and a crawl of 0 pages is an error instead
+  of a report full of sitemap URLs that "do not exist".
+- **Fewer false high and critical findings.**
+  - URLs the crawl never reached because of `--max-pages` are no longer reported as sitemap
+    orphans or broken links.
+  - Absolute links to the site's own origin count as internal links.
+  - Auditing a dev server or preview deploy no longer flags every production canonical as
+    off-site.
+  - `skype:`, `geo:`, `ftp:` and other non-http links are not broken links.
+- **Rules applied as documented.**
+  - Gate A now withholds schema findings on non-indexable pages.
+  - A sitemap listing a blocked page by its clean URL is the critical contradiction.
+  - robots.txt groups for the same agent are combined (RFC 9309).
+- **Hardening.**
+  - The http crawl reads only the headers of linked non-HTML files, and a page whose body breaks off mid-transfer is skipped instead of stopping the crawl.
+  - Lighthouse keeps Chrome's sandbox unless running as root or with `SITEMEND_NO_SANDBOX=1`.
+  - On Windows, a robots.txt `Sitemap:` path can no longer read files outside the audited folder.
 
 ## 1.4.2 - 2026-10-15
 
