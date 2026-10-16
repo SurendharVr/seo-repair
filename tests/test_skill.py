@@ -2773,5 +2773,48 @@ class TestHostAgreement(Base):
         f = self._audit("acme-git-main.vercel.app")
         self.assertEqual([x["severity"] for x in f if x["id"] == "S1-HOST-MISMATCH"], ["critical"])
 
+class TestCheckCommand(unittest.TestCase):
+    """`sitemend check` is what the GitHub Action runs: compare a change with its base and
+    fail only on what the change broke. Folders for a static build, URLs for a preview."""
+
+    def _site(self, broken=False):
+        fx = Fixture()
+        self.addCleanup(fx.cleanup)
+        link = '<a href="/gone/">x</a> ' if broken else ""
+        fx.write("index.html", page_html(body="<h1>H</h1><p>" + link + "word " * 300 + "</p>"))
+        return fx.root
+
+    def _out(self):
+        d = tempfile.mkdtemp(prefix="sitemend-check-")
+        self.addCleanup(shutil.rmtree, d, True)
+        return os.path.join(d, "out")
+
+    def test_a_change_that_breaks_a_link_fails_and_leaves_a_comment(self):
+        out = self._out()
+        code = sitemend.check(self._site(broken=True), self._site(), out, 200)
+        self.assertEqual(code, 1)
+        with open(os.path.join(out, "verify.md"), encoding="utf-8") as fh:
+            self.assertIn("S1-BROKEN-LINK", fh.read())
+
+    def test_an_unchanged_site_passes(self):
+        self.assertEqual(sitemend.check(self._site(), self._site(), self._out(), 200), 0)
+
+    def test_without_a_base_it_fails_only_on_fail_on(self):
+        broken = self._site(broken=True)          # one high finding, no critical
+        self.assertEqual(sitemend.check(broken, None, self._out(), 200), 0)
+        self.assertEqual(sitemend.check(broken, None, self._out(), 200, "high"), 1)
+
+    def test_a_preview_url_compared_with_production_passes_when_nothing_changed(self):
+        """The same site on two origins (production and a preview) is not a regression:
+        no finding's evidence may depend on the origin it was crawled from."""
+        routes = {"/": (200, "text/html", page_html(
+                      body='<h1>H</h1><p><a href="/about/">a</a> ' + "word " * 300 + "</p>"), {}),
+                  "/about/": (200, "text/html", page_html(title="About Page With A Fine Long Title"), {})}
+        prod, preview = serve(self, routes), serve(self, routes)
+        out = self._out()
+        self.assertEqual(sitemend.check(preview, prod, out, 50), 0)
+        with open(os.path.join(out, "verify.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["new"], [])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
