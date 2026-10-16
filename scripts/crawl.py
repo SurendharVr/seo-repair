@@ -592,6 +592,12 @@ def fetch_site_files(sess, origin, timeout):
     return robots_txt, discover_sitemap(robots_txt, get)
 
 
+# What browsers and Googlebot send. Some sites negotiate on Accept and answer the generic
+# */* with something else: turborepo.dev serves its home page as text/markdown to a client
+# that does not ask for HTML (Vary: Accept), so the crawl saw a site with no home page.
+BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+
+
 def extra_headers(env=None):
     """Request headers from SITEMEND_HTTP_HEADERS, one "Name: value" per line: for example
     the bypass header a Vercel preview behind Deployment Protection needs, or basic auth for
@@ -616,8 +622,8 @@ def probe_soft404(start, timeout=20):
     path = "/sitemend-404-probe-" + secrets.token_hex(6)
     try:
         r = requests.get(origin + path, timeout=timeout, allow_redirects=True,
-                         headers=dict({"User-Agent": "sitemend-crawler/1.0 (+local audit)"},
-                                      **extra_headers()))
+                         headers=dict({"User-Agent": "sitemend-crawler/1.0 (+local audit)",
+                                       "Accept": BROWSER_ACCEPT}, **extra_headers()))
     except Exception as e:
         return {"path": path, "status": None, "error": str(e)[:200]}
     return {"path": path, "status": r.status_code, "final_url": r.url,
@@ -645,6 +651,7 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
 
     sess = requests.Session()
     sess.headers["User-Agent"] = "sitemend-crawler/1.0 (+local audit)"
+    sess.headers["Accept"] = BROWSER_ACCEPT
     sess.headers.update(extra_headers())
     # Crawl the origin the start URL lands on. apex -> www and http -> https are how a
     # site is served, not off-site links: taking the typed origin skipped every page as
@@ -787,6 +794,14 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
                 nxt = S.canonical_http_path(t)
                 if nxt not in seen:
                     queue.append(nxt)
+            # Search engines also discover pages through hreflang alternates and the
+            # canonical, so the crawl does too. Without this, a language version nothing
+            # links to was reported as "does not exist" even by a crawl that finished.
+            for href in [e["href"] for e in rec.get("hreflang") or []] + [rec.get("canonical") or ""]:
+                kind, resolved = S.resolve_href(path, href)
+                t = audit.internal_target({"kind": kind, "resolved": resolved}, origin)
+                if t is not None and S.canonical_http_path(t) not in seen:
+                    queue.append(S.canonical_http_path(t))
 
     # --max-pages stopped the walk with URLs still queued. They were never fetched, so
     # whether they exist is unknown: audit.py must not report them as sitemap orphans or

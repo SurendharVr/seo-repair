@@ -2508,6 +2508,53 @@ class TestHttpMaxPagesTruncation(unittest.TestCase):
         cross = [f for f in found if f["id"] == "S1-CANONICAL-CROSS"]
         self.assertEqual([(f["pages"], f["detail"]["points_to"]) for f in cross], [(["/p0/"], "/p7/")])
 
+    def test_hreflang_alternates_nothing_links_to_are_crawled(self):
+        """REGRESSION found on pnpm.io: /it serves 200 but no crawled page links to it and
+        the sitemap omits it, so a finished crawl still called it missing. Search engines
+        discover pages through hreflang and the canonical; the crawl now does too."""
+        alt = ('<link rel="alternate" hreflang="en" href="/">'
+               '<link rel="alternate" hreflang="it" href="/it">')
+        routes = {"/": (200, "text/html", page_html(head_extra=alt), {}),
+                  "/it": (200, "text/html", page_html(
+                      title="Pagina italiana con un titolo abbastanza lungo", head_extra=alt,
+                      body="<h1>Ciao</h1><p>" + "parola " * 300 + "</p>"), {})}
+        doc = http_doc(serve(self, routes))
+        self.assertIn("/it", [p["url"] for p in doc["pages"]])
+        self.assertNotIn("S1-HREFLANG-BROKEN", [f["id"] for f in audit.audit(doc)["findings"]])
+
+    def test_a_site_that_negotiates_on_accept_is_crawled_as_html(self):
+        """REGRESSION found on turborepo.dev: its home page answers the generic */* with
+        text/markdown (Vary: Accept), so the crawl skipped it as non-HTML and reported
+        "/" as a broken link and a sitemap orphan. Ask for HTML the way browsers do."""
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+        home = page_html().encode()
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                html = "text/html" in (self.headers.get("Accept") or "") and self.path == "/"
+                body = home if html else b"# Home\n"
+                self.send_response(200 if self.path == "/" else 404)
+                self.send_header("Content-Type", "text/html" if html else "text/markdown")
+                self.send_header("Vary", "Accept")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        pages = crawl.crawl_http("http://127.0.0.1:%d/" % srv.server_address[1])[0]
+        self.assertEqual([p["url"] for p in pages], ["/"])
+
     def test_a_missing_hreflang_page_is_still_broken_when_the_crawl_finished(self):
         broken = [f for f in self._i18n(max_pages=300, missing=("de",))
                   if f["id"] == "S1-HREFLANG-BROKEN"]
