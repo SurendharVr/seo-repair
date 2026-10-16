@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 - 2026-10-16
 
 - **Judgement calls never fail a pull request.** Findings `audit.py` marks below high
   confidence (`S3-CANNIBALIZATION`, `S3-NEAR-DUPLICATE`) are listed in the PR comment as
