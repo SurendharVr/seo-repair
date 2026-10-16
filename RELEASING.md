@@ -3,6 +3,22 @@
 Every step here exists because something actually went wrong without it. None of it is
 ceremony.
 
+## Stability policy
+
+The gate is only worth trusting if its rules hold still between releases. The version
+number says which kind of change a release contains:
+
+- **Patch (1.5.x):** bug fixes that do not change which findings are emitted or their
+  severity.
+- **Minor (1.x.0):** any change to a rule, threshold, severity, or which findings fail
+  the gate. The CHANGELOG entry names every affected rule ID.
+- **Major (x.0.0):** changes to the Action inputs, the `findings.json` shape, or the CLI
+  flags.
+
+If it is unclear whether a fix changes a finding, treat it as a minor release. Releases
+up to 1.5.2 predate this policy, and some patches did change findings (1.5.2 changed
+`S1-HREFLANG-BROKEN` and `S1-CANONICAL-BROKEN`).
+
 ## Before tagging
 
 **1. Tests pass locally.**

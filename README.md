@@ -240,6 +240,12 @@ Only measured findings fail the check. Judgement calls, such as two pages that s
 target the same terms (`S3-CANNIBALIZATION`) or near-duplicate text, are listed in the
 comment as advisory, because adding an ordinary sibling page must not fail a PR.
 
+Pin an exact version (`@v1.5.2`) to keep the gate's rules fixed. Patch releases only
+fix bugs and never change which findings fire; any rule, threshold or severity change is
+a minor release that names the affected rule IDs; Action inputs, `findings.json` shape
+and CLI flags change only in a major release. See the
+[stability policy](RELEASING.md#stability-policy).
+
 ### Build recipes
 
 | Framework | `build-command` | `site-dir` | Notes |
