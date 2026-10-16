@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Per-finding waivers.** A `.sitemend-waivers.json` names deliberate exceptions, each with
+  one exact rule ID, a page-path pattern, a required reason and an optional expiry date. A
+  finding it covers no longer fails the regression gate or `--fail-on`, but it stays in
+  `findings.json` and the report, and the PR comment lists it under "Waived" with its
+  reason. Waivers that cover nothing are listed as unused, and expired ones as expired. A
+  malformed file, a pattern that matches every page or a missing reason fails the run.
+  New: the Action's `waivers` input (default `.sitemend-waivers.json`, read from the PR)
+  and `--waivers PATH` on `audit`, `verify` and `check`. This changes which findings fail
+  the gate, so under the stability policy it ships in a minor release (1.6.0).
 - **A stability policy for the gate.** `RELEASING.md` now says what each kind of release
   may change: patches never change which findings are emitted or their severity, any rule,
   threshold or severity change is a minor release whose entry names the affected rule IDs,

@@ -135,7 +135,7 @@ from that:
 | **Structured data** | Required properties, if it checks at all | Required properties, and whether the markup claims things the page never shows, such as review authors |
 | **Applying fixes** | Suggestions | One approved batch at a time, then a re-crawl to confirm it worked. Nothing is edited without approval |
 | **In CI** | No | The example GitHub Action fails a PR only on findings it introduces, and comments the new and closed ones on the PR |
-| **Tested** | Not testable | 242 tests, many pinned to false positives found on real runs |
+| **Tested** | Not testable | 259 tests, many pinned to false positives found on real runs |
 
 **How big is the gap?** We measured it on the demo site (5 pages, 14 planted defects).
 Three plain "audit this site" runs by an AI agent with read-only file access found 14, 12
@@ -239,6 +239,41 @@ For a stricter gate that also fails on findings the base already had, add
 Only measured findings fail the check. Judgement calls, such as two pages that seem to
 target the same terms (`S3-CANNIBALIZATION`) or near-duplicate text, are listed in the
 comment as advisory, because adding an ordinary sibling page must not fail a PR.
+
+### Waivers: deliberate exceptions
+
+Some changes are meant to trip a rule, such as a draft section that is `noindex` on
+purpose. Rather than switching the check off, add a `.sitemend-waivers.json` at the
+repository root:
+
+```json
+{
+  "waivers": [
+    {
+      "rule": "S1-NOT-INDEXABLE",
+      "url": "/drafts/*",
+      "reason": "Draft pages are noindex on purpose",
+      "expires": "2027-01-31"
+    }
+  ]
+}
+```
+
+- `rule` is one exact rule ID. Patterns are not allowed.
+- `url` is a pattern on the page path. It covers a finding only when every page the
+  finding names matches, so `/drafts/*` does not cover a duplicate between a draft and
+  `/pricing`. A pattern that matches every page, such as `*` or `/*`, is rejected.
+  Site-wide findings (no robots.txt, no sitemap) are on `/`.
+- `reason` is required.
+- `expires` is optional. After that date the waiver stops applying and the comment says so.
+
+A waiver changes only whether the check fails, for both the regression gate and
+`fail-on`. The finding stays in `findings.json`, the report and the comment, which lists
+every waived finding with its reason and every waiver that covered no finding as unused.
+A malformed file fails the run with an error that names the problem. The Action reads
+the file from the pull request, so a new waiver is reviewed in the same diff; set the
+`waivers` input to use another path. On the command line, pass `--waivers PATH` to
+`audit`, `verify` or `check`.
 
 Pin an exact version (`@v1.5.2`) to keep the gate's rules fixed. Patch releases only
 fix bugs and never change which findings fire; any rule, threshold or severity change is
@@ -394,7 +429,7 @@ only requests your own site.
 python tests/test_skill.py
 ```
 
-242 tests (two are opt-in: real Lighthouse and real Chrome rendering), no fixture files — each builds a throwaway site in a temp directory. They pin
+259 tests (two are opt-in: real Lighthouse and real Chrome rendering), no fixture files — each builds a throwaway site in a temp directory. They pin
 down calibration decisions made after real false positives: build-directory exclusion,
 deliberate `noindex`, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,

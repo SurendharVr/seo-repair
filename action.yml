@@ -24,6 +24,9 @@ inputs:
   fail-on:
     description: Also fail while any measured finding at this severity or worse is open, including ones the base already had (critical, high or medium). With nothing to compare with, it defaults to critical.
     default: ""
+  waivers:
+    description: Path to the waivers file, relative to the repository root. Findings it covers do not fail the check but are listed in the comment with their reason. Read from the pull request, so a new waiver shows up in its diff. A missing file at the default path means no waivers; set it to an empty string to turn waivers off.
+    default: .sitemend-waivers.json
   max-pages:
     description: The most pages to crawl on each side in url mode.
     default: "200"
@@ -86,11 +89,19 @@ runs:
         BASELINE_URL: ${{ inputs.baseline-url }}
         FAIL_ON: ${{ inputs.fail-on }}
         MAX_PAGES: ${{ inputs.max-pages }}
+        WAIVERS: ${{ inputs.waivers }}
         SITEMEND_HTTP_HEADERS: ${{ inputs.http-headers }}
       run: |
         set +e
         args=(--out _sitemend/out --max-pages "$MAX_PAGES")
         if [ -n "$FAIL_ON" ]; then args+=(--fail-on "$FAIL_ON"); fi
+        # The PR's own waivers file. In url mode nothing is checked out here, so it is
+        # read from the workspace. Only the default path may be missing.
+        if [ -n "$WAIVERS" ]; then
+          w="$WAIVERS"
+          if [ -z "$URL" ]; then w="_sitemend/head/$WAIVERS"; fi
+          if [ -f "$w" ] || [ "$WAIVERS" != ".sitemend-waivers.json" ]; then args+=(--waivers "$w"); fi
+        fi
         if [ -n "$URL" ]; then
           if [ -n "$BASELINE_URL" ]; then args+=(--base "$BASELINE_URL"); fi
           sitemend check "$URL" "${args[@]}"
