@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The example GitHub Action now pins `sitemend==1.4.3`.
+
 ## 1.4.3 - 2026-10-16
 
 - **`--render` timeout is configurable, and the CI render job no longer flakes.** The
