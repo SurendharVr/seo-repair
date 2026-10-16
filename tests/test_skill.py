@@ -1908,10 +1908,10 @@ class TestPackaging(unittest.TestCase):
         they must name the version being released, not the last one."""
         import re
         py = re.search(r'^version = "([^"]+)"', self._read("pyproject.toml"), re.M).group(1)
-        for name in ("sitemend.yml", "preview.yml"):
-            pins = re.findall(r"SurendharVr/sitemend@v([0-9.]+)",
-                              self._read("examples", "github-action", name))
-            self.assertEqual(set(pins), {py}, name)
+        for parts in (("examples", "github-action", "sitemend.yml"),
+                      ("examples", "github-action", "preview.yml"), ("README.md",)):
+            pins = re.findall(r"SurendharVr/sitemend@v([0-9.]+)", self._read(*parts))
+            self.assertEqual(set(pins), {py}, "/".join(parts))
 
     def test_the_wheel_ships_every_script_and_the_dashboard_template(self):
         """pyproject maps scripts/ and assets/ into the wheel by directory, so a new script
