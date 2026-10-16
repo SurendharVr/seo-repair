@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Judgement calls never fail a pull request.** Findings `audit.py` marks below high
+  confidence (`S3-CANNIBALIZATION`, `S3-NEAR-DUPLICATE`) are listed in the PR comment as
+  advisory and no longer fail `sitemend verify` or `--fail-on`. Adding a sibling reference
+  page (`hx-patch` next to `hx-get`) used to fail the check with three high findings. The
+  findings themselves, their severity, the report and the gates are unchanged.
 - **Large sites audit in seconds, with the same findings.** The near-duplicate and
   cannibalization checks no longer compare every pair of pages. They compare only pairs
   that could reach the threshold, chosen by filters that can't drop a qualifying pair
