@@ -1,12 +1,14 @@
 # Copy to .github/workflows/sitemend.yml in the site you want to guard.
 #
-# A ratchet: it audits the pull request's base branch and its head, and fails the check
-# only when the PR adds a critical or high finding the base did not have. Findings that
-# are already on the base branch never fail a PR, so you can adopt this on a site with
-# a backlog and pay it down later. A single PR comment lists the new and closed
-# findings, quoting each one's evidence, and is updated on every push. The full report
-# and dashboard are attached to the run.
-name: SEO audit
+# A ratchet: the action builds and audits the pull request and its base branch, and
+# fails the check only when the PR adds a measured critical or high finding the base did
+# not have. Findings already on the base branch never fail a PR, so you can adopt it on
+# a site with a backlog. Judgement calls (two pages that seem to target the same terms)
+# are listed as advisory and never fail it. One PR comment quotes each finding's
+# evidence and is updated on every push; the full report is attached to the run.
+#
+# Server-rendered site, or one only a deploy can build? Use preview.yml instead.
+name: SEO check
 
 on:
   pull_request:
@@ -15,65 +17,19 @@ permissions:
   contents: read
   pull-requests: write   # to post and update the comment
 
-env:
-  # The folder that holds your site, relative to the repo root (. for the root).
-  SITE_DIR: .
-
 jobs:
   seo:
     runs-on: ubuntu-latest
     steps:
-      # Head and base go in their own folders, so neither audit crawls the other.
-      - uses: actions/checkout@v4
+      # Whatever your build needs. Delete this step for a site that is already HTML.
+      - uses: actions/setup-node@v4
         with:
-          path: head
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          path: base
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+          node-version: 20
 
       # Pinned, so a new release never changes what fails your build without a PR.
-      # 1.4.0 is the first release that writes verify.md for the comment.
-      - name: Install sitemend
-        run: pip install sitemend==1.4.3
-
-      - name: Audit the base branch
-        run: sitemend audit "base/$SITE_DIR" --out base-out
-
-      # Exits non-zero when the PR adds a critical or high finding. Stricter mode: add
-      # --fail-on high (or critical) to also fail while any such finding is open,
-      # including ones already on the base branch.
-      - name: Audit the PR and compare
-        run: sitemend verify "head/$SITE_DIR" --baseline base-out/findings.json --out sitemend-out
-
-      # Runs when the gate fails too. A PR from a fork gets a read-only token, so there
-      # the comment is skipped and the check result and report still stand.
-      - name: Comment on the PR
-        if: always() && hashFiles('sitemend-out/verify.md') != ''
-        continue-on-error: true
-        uses: actions/github-script@v7
+      - uses: SurendharVr/sitemend@v1.5.0
         with:
-          script: |
-            const body = require('fs').readFileSync('sitemend-out/verify.md', 'utf8');
-            const marker = body.split('\n')[0];
-            const issue = { owner: context.repo.owner, repo: context.repo.repo,
-                            issue_number: context.issue.number };
-            const comments = await github.paginate(github.rest.issues.listComments, issue);
-            const mine = comments.find(c => c.body && c.body.startsWith(marker));
-            if (mine) {
-              await github.rest.issues.updateComment({ ...issue, comment_id: mine.id, body });
-            } else {
-              await github.rest.issues.createComment({ ...issue, body });
-            }
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: sitemend-report
-          path: |
-            sitemend-out/
-            base-out/findings.json
+          # Pick your framework's row from the README's "Build recipes" table. These two
+          # lines are Next.js with `output: 'export'` in next.config.js.
+          build-command: npm ci && npm run build
+          site-dir: out

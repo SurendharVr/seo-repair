@@ -100,6 +100,22 @@ environment `pypi` (a `pypi` environment exists under the repo's Settings ->
 Environments). If the repo is ever renamed again, update the publisher first or the
 upload step fails. First published as 1.2.1 on 2026-10-14.
 
+**The GitHub Action.** `action.yml` installs sitemend from its own tagged code, so a
+release tag is also an Action release. After the PyPI publish succeeds, move the major
+tag so `@v1` users get the release (tags are not covered by branch protection):
+
+```bash
+git tag -f v1 vX.Y.Z && git push -f origin v1
+```
+
+`release.yml` only runs on `vX.Y.Z` tags, so moving `v1` publishes nothing. The example
+workflows pin `@vX.Y.Z`; a test fails until they name the version in `pyproject.toml`.
+
+**Marketplace.** The first time: on the GitHub Release page for the tag, tick "Publish this
+Action to the GitHub Marketplace", accept the Marketplace Developer Agreement and pick a
+category (Continuous integration). It needs two-factor authentication on the owner
+account. Later releases: tick the same box when creating the release.
+
 To check the wheel by hand without publishing anything:
 
 ```bash

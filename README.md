@@ -204,18 +204,59 @@ python scripts/sitemend.py audit ./my-site --fail-on high   # exit 1 if a high/c
 python scripts/sitemend.py verify ./my-site --baseline sitemend-out/findings.json
 ```
 
-To guard a site on every pull request, copy
-[`examples/github-action/sitemend.yml`](examples/github-action/sitemend.yml) to
-`.github/workflows/`. It is a ratchet: it audits the PR's base branch and its head, and
-fails the check only when the PR adds a critical or high finding the base did not have.
-Findings already on the base branch never fail a PR, so you can turn it on for a site
-with a backlog today. One PR comment, updated on every push, lists the new and closed
-findings with each one's page and quoted evidence; the full report and dashboard are
-attached to the run. For a stricter gate that also fails on findings the base already
-had, add `--fail-on high` to its `verify` step.
+To guard a site on every pull request, add the GitHub Action. It checks out the PR and
+its base branch, builds both, audits both, and fails the check only when the PR adds a
+measured critical or high finding the base did not have. Findings already on the base
+branch never fail a PR, so you can turn it on for a site with a backlog today. One PR
+comment, updated on every push, lists the new and closed findings with each one's page
+and quoted evidence; the full report and dashboard are attached to the run.
+
+```yaml
+- uses: actions/setup-node@v4
+  with:
+    node-version: 20
+- uses: SurendharVr/sitemend@v1.5.0
+  with:
+    build-command: npm ci && npm run build
+    site-dir: out
+```
+
+The complete workflow is [`examples/github-action/sitemend.yml`](examples/github-action/sitemend.yml).
+For a stricter gate that also fails on findings the base already had, add
+`fail-on: high`.
+
 Only measured findings fail the check. Judgement calls, such as two pages that seem to
 target the same terms (`S3-CANNIBALIZATION`) or near-duplicate text, are listed in the
 comment as advisory, because adding an ordinary sibling page must not fail a PR.
+
+### Build recipes
+
+| Framework | `build-command` | `site-dir` | Notes |
+| --- | --- | --- | --- |
+| Next.js (static export) | `npm ci && npm run build` | `out` | Needs `output: 'export'` in `next.config.js` |
+| Astro | `npm ci && npm run build` | `dist` | |
+| Docusaurus | `npm ci && npm run build` | `build` | |
+| SvelteKit (`adapter-static`) | `npm ci && npm run build` | `build` | |
+| VitePress | `npm ci && npm run docs:build` | `docs/.vitepress/dist` | The script name `vitepress init` creates |
+| Eleventy | `npm ci && npx @11ty/eleventy` | `_site` | |
+| Hugo | `hugo --minify` | `public` | Add `peaceiris/actions-hugo` before the action |
+| Plain HTML | leave empty | the folder that holds it | |
+| Server-rendered (Next.js without export, Nuxt, Remix) | | | Use the preview workflow below |
+
+### Server-rendered sites: check the preview deploy
+
+[`examples/github-action/preview.yml`](examples/github-action/preview.yml) runs when Vercel
+or Netlify reports a successful preview deploy. It crawls the preview, crawls production,
+and fails only on what the preview broke; the comment goes on the PR the commit belongs
+to. Vercel previews sit behind Deployment Protection by default: create a "Protection
+Bypass for Automation" secret in the Vercel project, store it as a GitHub secret, and the
+workflow sends it as the `x-vercel-protection-bypass` header. Headers come from the
+`SITEMEND_HTTP_HEADERS` environment variable, never the command line, so a secret stays out
+of process listings and reports.
+
+On another CI system, `sitemend check` does the same job:
+`sitemend check ./head/out --base ./base/out` for two builds, or
+`sitemend check https://preview.example.com --base https://www.example.com` for two URLs.
 
 To see what the comment looks like, open the
 [demo PR](https://github.com/SurendharVr/sitemend-demo/pull/2) in
@@ -292,9 +333,10 @@ which fails only on critical or high findings that are new since the baseline.
 **Does it need Claude?** No. The CLI and the GitHub Action run anywhere Python 3.9+
 does. Claude Code adds the fix-as-a-diff step.
 
-**Our Next.js site is server-rendered.** Point it at a preview URL and it crawls the real
-responses, including headers and the soft-404 probe. A static build gets the fullest
-coverage, including proof that no page is orphaned.
+**Our Next.js site is server-rendered.** Use [`preview.yml`](examples/github-action/preview.yml):
+it waits for the preview deploy, crawls it and production, and compares the two,
+including headers and the soft-404 probe. A static export with the build recipe gets the
+fullest coverage, including proof that no page is orphaned.
 
 **Is my code sent anywhere?** No. On a folder it makes no network calls. On a URL it
 only requests your own site.
@@ -326,6 +368,8 @@ only requests your own site.
 - **The unused-asset check recommends deletion**, so it is deliberately conservative: a
   filename appearing anywhere in any page's source counts as used. Verify before
   deleting anyway — files can be referenced from a CMS or hot-linked externally.
+- **`SITEMEND_HTTP_HEADERS` is not sent by `--render`.** Chrome makes its own requests,
+  so a protected preview can be crawled but not rendered. The Action never renders.
 
 ## Tests
 
