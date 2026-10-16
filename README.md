@@ -2,6 +2,7 @@
 
 [![tests](https://github.com/SurendharVr/sitemend/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SurendharVr/sitemend/actions/workflows/tests.yml)
 [![license](https://img.shields.io/github/license/SurendharVr/sitemend)](LICENSE)
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-sitemend-blue?logo=github)](https://github.com/marketplace/actions/sitemend-seo-regression-check)
 
 **Catch the deploys that break your SEO, before Google does.**
 
@@ -166,6 +167,15 @@ what stops a page being crawled and indexed first, then decide what it should sa
 
 ## Install
 
+**As a GitHub Action**, from the
+[Marketplace listing](https://github.com/marketplace/actions/sitemend-seo-regression-check):
+
+```yaml
+- uses: SurendharVr/sitemend@v1.5.1
+  with:
+    site-dir: out   # your build output; see Build recipes below
+```
+
 **As a command-line tool:**
 
 ```bash
@@ -204,7 +214,8 @@ python scripts/sitemend.py audit ./my-site --fail-on high   # exit 1 if a high/c
 python scripts/sitemend.py verify ./my-site --baseline sitemend-out/findings.json
 ```
 
-To guard a site on every pull request, add the GitHub Action. It checks out the PR and
+To guard a site on every pull request, add the
+[GitHub Action](https://github.com/marketplace/actions/sitemend-seo-regression-check). It checks out the PR and
 its base branch, builds both, audits both, and fails the check only when the PR adds a
 measured critical or high finding the base did not have. Findings already on the base
 branch never fail a PR, so you can turn it on for a site with a backlog today. One PR
