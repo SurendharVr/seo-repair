@@ -2474,6 +2474,46 @@ class TestHttpMaxPagesTruncation(unittest.TestCase):
         for fid in ("S1-SITEMAP-ORPHAN", "S1-BROKEN-LINK", "S2-ORPHAN", "S2-UNREACHABLE"):
             self.assertNotIn(fid, ids)
 
+    def _i18n(self, max_pages, missing=()):
+        alt = ('<link rel="alternate" hreflang="en" href="/">'
+               '<link rel="alternate" hreflang="fr" href="/fr/">'
+               '<link rel="alternate" hreflang="de" href="/de/">')
+        routes = {"/": (200, "text/html", page_html(
+            head_extra=alt + '<link rel="canonical" href="/">',
+            body='<h1>H</h1><p><a href="/p0/">p0</a> <a href="/fr/">fr</a> <a href="/de/">de</a> '
+                 + "word " * 300 + "</p>"), {})}
+        for lang in ("fr", "de"):
+            if lang not in missing:
+                routes["/%s/" % lang] = (200, "text/html", page_html(
+                    title="%s home page with a long enough title" % lang,
+                    head_extra=alt + '<link rel="canonical" href="/%s/">' % lang,
+                    body="<h1>%s</h1><p>" % lang + ("%s " % lang) * 300 + "</p>"), {})
+        for i in range(8):
+            routes["/p%d/" % i] = (200, "text/html", page_html(
+                title="Page %d With A Long Enough Title Here" % i,
+                head_extra='<link rel="canonical" href="/p7/">' if i == 0 else "",
+                body='<h1>P</h1><p><a href="/">home</a> ' + ("w%d " % i) * 300 + "</p>"), {})
+        routes["/sitemap.xml"] = (200, "application/xml", "<urlset>" + "".join(
+            "<url><loc>https://x.org/p%d/</loc></url>" % i for i in range(8)) + "</urlset>", {})
+        return audit.audit(http_doc(serve(self, routes), max_pages=max_pages))["findings"]
+
+    def test_hreflang_and_canonical_targets_it_never_reached_are_not_broken(self):
+        """REGRESSION found on biomejs.dev: a 50-page crawl reported 241 high
+        S1-HREFLANG-BROKEN for language pages that serve 200 but were never fetched.
+        A canonical to an unfetched page is still a measured cross-canonical."""
+        found = self._i18n(max_pages=3)
+        ids = [f["id"] for f in found]
+        self.assertNotIn("S1-HREFLANG-BROKEN", ids)
+        self.assertNotIn("S1-CANONICAL-BROKEN", ids)
+        cross = [f for f in found if f["id"] == "S1-CANONICAL-CROSS"]
+        self.assertEqual([(f["pages"], f["detail"]["points_to"]) for f in cross], [(["/p0/"], "/p7/")])
+
+    def test_a_missing_hreflang_page_is_still_broken_when_the_crawl_finished(self):
+        broken = [f for f in self._i18n(max_pages=300, missing=("de",))
+                  if f["id"] == "S1-HREFLANG-BROKEN"]
+        self.assertTrue(broken)
+        self.assertTrue(all('hreflang="de"' in f["evidence"] for f in broken))
+
 
 class TestHttpSkipsNonHtmlBodies(unittest.TestCase):
     """REGRESSION found by the 2026-10-16 audit: a link to a 60 MB file downloaded all of

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **A capped http crawl no longer calls hreflang or canonical targets it never reached
+  broken.** `--max-pages` already kept uncrawled URLs out of `S1-SITEMAP-ORPHAN` and
+  `S1-BROKEN-LINK`, but not `S1-HREFLANG-BROKEN` (high) or `S1-CANONICAL-BROKEN`
+  (critical). A 50-page crawl of biomejs.dev reported 241 high hreflang findings for
+  language pages that all serve 200. A canonical that names another, uncrawled page is
+  still reported, as `S1-CANONICAL-CROSS`, because that much is measured.
+
 ## 1.5.1 - 2026-10-16
 
 - **The Action can be published to GitHub Marketplace.** Its description was 193

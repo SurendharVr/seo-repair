@@ -319,6 +319,14 @@ def audit(doc, vitals=None, schema_findings=None):
             out.append(finding("S1-CANONICAL-OFFSITE", 1, "critical",
                                "Canonical points to a different origin.", [p["url"]],
                                evidence=c, recipe="canonical-fix"))
+        elif cpath not in alias and S.canonical_http_path(cpath) in not_crawled:
+            # A page --max-pages kept the crawl from reaching: it may well exist, so it is
+            # not "broken". That it is another page than this one is measured, though.
+            if cpath not in (p.get("aliases") or [p["url"]]):
+                out.append(finding("S1-CANONICAL-CROSS", 1, "high",
+                                   "Canonical points at a different page (self-canonical expected).",
+                                   [p["url"]], evidence=c, recipe="canonical-fix",
+                                   detail={"points_to": cpath}))
         elif cpath not in alias:
             out.append(finding("S1-CANONICAL-BROKEN", 1, "critical",
                                "Canonical points to a URL that does not exist.", [p["url"]],
@@ -502,6 +510,17 @@ def audit(doc, vitals=None, schema_findings=None):
 
     # hreflang: every alternate must name a real page, include itself, and be reciprocated
     h_targets = {}
+
+    def uncrawled(href, page_url):
+        """Whether an hreflang href names a page --max-pages left in the queue."""
+        if href.startswith("http"):
+            path = path_of(href)
+        else:
+            path = S.norm_path(S.resolve_href(page_url, href)[1] or "/")
+        key = S.canonical_http_path(path)
+        alt = key[:-1] if key.endswith("/") else key + "/"
+        return key in not_crawled or alt in not_crawled
+
     for p in pages:
         entries = p.get("hreflang") or []
         if not entries:
@@ -514,6 +533,8 @@ def audit(doc, vitals=None, schema_findings=None):
                                    evidence='hreflang="{0}"'.format(e["lang"]), recipe="hreflang-fix"))
                 continue
             kind, target = hreflang_target(e["href"], p["url"], alias, base)
+            if kind == "internal" and target is None and uncrawled(e["href"], p["url"]):
+                continue      # the truncated crawl never reached it: unknown, not broken
             if kind == "internal" and target is None:
                 out.append(finding("S1-HREFLANG-BROKEN", 1, "high",
                                    "hreflang points at a page that does not exist.", [p["url"]],
