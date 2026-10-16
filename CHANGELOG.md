@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.5.2 - 2026-10-16
+
+The example workflows and README pin `@v1.5.2`. The three crawler fixes came out of scanning 20
+open-source docs sites, where they made sitemend report pages as missing that serve 200:
 
 - **A capped http crawl no longer calls hreflang or canonical targets it never reached
   broken.** `--max-pages` already kept uncrawled URLs out of `S1-SITEMAP-ORPHAN` and
@@ -8,6 +11,13 @@
   (critical). A 50-page crawl of biomejs.dev reported 241 high hreflang findings for
   language pages that all serve 200. A canonical that names another, uncrawled page is
   still reported, as `S1-CANONICAL-CROSS`, because that much is measured.
+- **The http crawl follows hreflang alternates and the canonical**, as search engines do.
+  A language version nothing linked to and the sitemap omitted (pnpm.io's `/it`) was
+  reported as high `S1-HREFLANG-BROKEN` even on a crawl that finished.
+- **The crawler asks for HTML the way browsers and Googlebot do** (`Accept: text/html,…`).
+  turborepo.dev answers the generic `*/*` on its home page with `text/markdown`
+  (`Vary: Accept`), so the crawl skipped `/` as non-HTML and reported it as a broken link
+  and a sitemap orphan.
 
 ## 1.5.1 - 2026-10-16
 
