@@ -2920,8 +2920,176 @@ class TestCheckCommand(unittest.TestCase):
         prod, preview = serve(self, routes), serve(self, routes)
         out = self._out()
         self.assertEqual(sitemend.check(preview, prod, out, 50), 0)
+
+
+class TestWaivers(unittest.TestCase):
+    """.sitemend-waivers.json is the gate's escape hatch for a deliberate exception, such as
+    a draft page that is noindex on purpose. Without one, the only way past an unwanted
+    failure is to switch the check off. Waivers change whether the gate fails, never what
+    was found."""
+
+    f = staticmethod(TestVerify.f)
+
+    def _dir(self):
+        d = tempfile.mkdtemp(prefix="sitemend-waivers-")
+        self.addCleanup(shutil.rmtree, d, True)
+        return d
+
+    def _file(self, doc, raw=None):
+        path = os.path.join(self._dir(), ".sitemend-waivers.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(raw if raw is not None else json.dumps(doc))
+        return path
+
+    def _load(self, *waivers, **kw):
+        return V.load_waivers(self._file({"waivers": list(waivers)}), **kw)
+
+    @staticmethod
+    def w(rule="S1-NOT-INDEXABLE", url="/drafts/*", reason="Drafts are noindex on purpose", **kw):
+        return dict(kw, rule=rule, url=url, reason=reason)
+
+    def _verify(self, base, cur, *waivers):
+        """Run verify.py on findings lists; return (exit code, verify.json, verify.md)."""
+        d = self._dir()
+        paths = {}
+        for name, items in (("b", base), ("c", cur)):
+            paths[name] = os.path.join(d, name + ".json")
+            with open(paths[name], "w") as fh:
+                json.dump({"findings": items}, fh)
+        args = ["--baseline", paths["b"], "--current", paths["c"], "--out", os.path.join(d, "v.json")]
+        if waivers:
+            args += ["--waivers", self._file({"waivers": list(waivers)})]
+        r = sitemend.run("verify.py", *args, ok=(0, 1))
+        with open(os.path.join(d, "v.json"), encoding="utf-8") as fh, \
+                open(os.path.join(d, "v.md"), encoding="utf-8") as md:
+            return r.returncode, json.load(fh), md.read()
+
+    def test_exact_page_match(self):
+        ws = self._load(self.w(url="/drafts/a/"))
+        self.assertTrue(V.waiver_for(self.f("S1-NOT-INDEXABLE", ["/drafts/a/"]), ws))
+        self.assertIsNone(V.waiver_for(self.f("S1-NOT-INDEXABLE", ["/drafts/b/"]), ws))
+
+    def test_glob_match(self):
+        ws = self._load(self.w())
+        self.assertTrue(V.waiver_for(self.f("S1-NOT-INDEXABLE", ["/drafts/a/", "/drafts/b/"]), ws))
+
+    def test_no_match_on_another_rule_or_page(self):
+        ws = self._load(self.w())
+        self.assertIsNone(V.waiver_for(self.f("S3-TITLE-MISSING", ["/drafts/a/"]), ws))
+        self.assertIsNone(V.waiver_for(self.f("S1-NOT-INDEXABLE", ["/pricing/"]), ws))
+
+    def test_every_page_of_a_finding_must_be_covered(self):
+        """A duplicate between a draft and /pricing is not a draft problem."""
+        ws = self._load(self.w(rule="S3-TITLE-DUPLICATE"))
+        self.assertIsNone(V.waiver_for(self.f("S3-TITLE-DUPLICATE", ["/drafts/a/", "/pricing/"]), ws))
+
+    def test_site_wide_finding_is_waived_by_root(self):
+        ws = self._load(self.w(rule="S1-ROBOTS-MISSING", url="/"))
+        self.assertTrue(V.waiver_for(self.f("S1-ROBOTS-MISSING", ["/"]), ws))
+
+    def test_a_pattern_that_covers_every_page_is_rejected(self):
+        for url in ("*", "/*", "/**", "**"):
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(ValueError, "every page"):
+                    self._load(self.w(url=url))
+
+    def test_a_wildcard_rule_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "exact rule ID"):
+            self._load(self.w(rule="S1-*"))
+
+    def test_missing_or_blank_reason_is_rejected(self):
+        for w in ({"rule": "S1-NOT-INDEXABLE", "url": "/drafts/*"}, self.w(reason="  ")):
+            with self.subTest(w=w):
+                with self.assertRaisesRegex(ValueError, 'waiver 1 needs a non-empty "reason"'):
+                    self._load(w)
+
+    def test_unknown_field_and_bad_date_are_rejected(self):
+        """A misspelled "expiry" would otherwise make a temporary waiver permanent."""
+        with self.assertRaisesRegex(ValueError, "unknown field.*expiry"):
+            self._load(self.w(expiry="2027-01-31"))
+        with self.assertRaisesRegex(ValueError, "expires"):
+            self._load(self.w(expires="next month"))
+
+    def test_malformed_json_fails_the_run_loudly(self):
+        path = self._file(None, raw='{"waivers": [')
+        with self.assertRaisesRegex(ValueError, "not valid JSON"):
+            V.load_waivers(path)
+        d = self._dir()
+        empty = os.path.join(d, "f.json")
+        with open(empty, "w") as fh:
+            json.dump({"findings": []}, fh)
+        r = subprocess.run([sys.executable, os.path.join(sitemend.HERE, "verify.py"),
+                            "--baseline", empty, "--current", empty, "--waivers", path,
+                            "--out", os.path.join(d, "v.json")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("not valid JSON", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(d, "v.json")))
+
+    def test_an_expired_waiver_stops_applying_and_says_so(self):
+        import datetime
+        ws = self._load(self.w(expires="2027-01-31"), today=datetime.date(2027, 2, 1))
+        self.assertIsNone(V.waiver_for(self.f("S1-NOT-INDEXABLE", ["/drafts/a/"]), ws))
+        self.assertTrue(V.waiver_for(self.f("S1-NOT-INDEXABLE", ["/drafts/a/"]),
+                                     self._load(self.w(expires="2027-01-31"),
+                                                today=datetime.date(2027, 1, 31))))
+        code, doc, md = self._verify([], [self.f("S1-NOT-INDEXABLE", ["/drafts/a/"])],
+                                     self.w(expires="2000-01-01"))
+        self.assertEqual(code, 1)
+        self.assertEqual([w["url"] for w in doc["expired_waivers"]], ["/drafts/*"])
+        self.assertIn("### Expired waivers", md)
+
+    def test_a_waived_regression_passes_and_is_still_reported(self):
+        new = self.f("S1-NOT-INDEXABLE", ["/drafts/a/"], severity="critical")
+        code, doc, md = self._verify([], [new], self.w())
+        self.assertEqual(code, 0)
+        self.assertEqual(doc["gate"], "PASS")
+        self.assertEqual([f["id"] for f in doc["new"]], ["S1-NOT-INDEXABLE"])
+        self.assertEqual([f["waiver"]["reason"] for f in doc["waived"]], ["Drafts are noindex on purpose"])
+        self.assertIn("| critical (waived) | S1-NOT-INDEXABLE", md)
+        self.assertIn("### Waived", md)
+        self.assertIn("Drafts are noindex on purpose", md)
+
+    def test_the_gate_passes_only_when_every_failing_finding_is_waived(self):
+        cur = [self.f("S1-NOT-INDEXABLE", ["/drafts/a/"]),
+               dict(self.f("S1-BROKEN-LINK", ["/"]), detail={"target": "/gone/"})]
+        self.assertEqual(self._verify([], cur, self.w())[0], 1)
+        self.assertEqual(self._verify([], cur, self.w(),
+                                      self.w(rule="S1-BROKEN-LINK", url="/", reason="Removed next week"))[0], 0)
+
+    def test_an_unused_waiver_is_listed(self):
+        """Unused means it covers nothing in this audit. A waiver for a finding the base
+        branch already had covers no new finding, but it is not unused."""
+        old = self.f("S1-NOT-INDEXABLE", ["/drafts/a/"])
+        code, doc, md = self._verify([old], [old], self.w(), self.w(rule="S3-TITLE-MISSING", url="/old/*"))
+        self.assertEqual(code, 0)
+        self.assertEqual([w["rule"] for w in doc["unused_waivers"]], ["S3-TITLE-MISSING"])
+        self.assertIn("### Unused waivers", md)
+
+    def test_fail_on_respects_waivers(self):
+        path = os.path.join(self._dir(), "f.json")
+        with open(path, "w") as fh:
+            json.dump({"findings": [self.f("S1-NOT-INDEXABLE", ["/drafts/a/"], severity="critical"),
+                                    self.f("S3-THIN", ["/a"], severity="low")]}, fh)
+        self.assertEqual(sitemend.SEVERITY[sitemend.worst_open(path)], "critical")
+        self.assertEqual(sitemend.SEVERITY[sitemend.worst_open(path, self._load(self.w()))], "low")
+
+    def test_check_end_to_end_keeps_the_finding_in_findings_json(self):
+        site = TestCheckCommand._site
+        broken, clean = site(self, broken=True), site(self)
+        out = os.path.join(self._dir(), "out")
+        waivers = self._file({"waivers": [self.w(rule="S1-BROKEN-LINK", url="/", reason="Page lands Monday")]})
+        self.assertEqual(sitemend.check(broken, clean, out, 200, waivers_path=waivers), 0)
+        with open(os.path.join(out, "head", "findings.json"), encoding="utf-8") as fh:
+            self.assertIn("S1-BROKEN-LINK", [f["id"] for f in json.load(fh)["findings"]])
+        with open(os.path.join(out, "verify.md"), encoding="utf-8") as fh:
+            self.assertIn("Page lands Monday", fh.read())
+        self.assertEqual(sitemend.check(broken, None, os.path.join(out, "2"), 200, "high",
+                                        waivers_path=waivers), 0)
         with open(os.path.join(out, "verify.json"), encoding="utf-8") as fh:
-            self.assertEqual(json.load(fh)["new"], [])
+            doc = json.load(fh)
+        self.assertEqual([f["id"] for f in doc["new"]], ["S1-BROKEN-LINK"])
+        self.assertEqual([f["id"] for f in doc["waived"]], ["S1-BROKEN-LINK"])
+
 
 class TestExtraHeaders(unittest.TestCase):
     """A Vercel preview behind Deployment Protection answers 401 until the request carries
@@ -3014,9 +3182,9 @@ class TestGithubAction(unittest.TestCase):
                 return cand
         return None
 
-    def test_the_audit_step_runs_check_on_the_folders_it_checked_out(self):
+    def _run_step(self, waivers=None):
         """Run the action's own shell step with bash against two prepared folders, the
-        way the runner would after checkout and build."""
+        way the runner would after checkout and build; return its GITHUB_OUTPUT words."""
         bash = self._bash()
         if not bash:
             raise unittest.SkipTest("bash not available")
@@ -3037,8 +3205,12 @@ class TestGithubAction(unittest.TestCase):
                 os.path.join(sitemend.HERE, "sitemend.py").replace("\\", "/")))
         os.chmod(os.path.join(shim, "sitemend"), 0o755)
         gh_out = os.path.join(work, "gh_output")
+        if waivers is not None:
+            with open(os.path.join(work, "_sitemend", "head", ".sitemend-waivers.json"), "w") as fh:
+                json.dump({"waivers": waivers}, fh)
         env = dict(os.environ, SITE_DIR="out", URL="", BASELINE_URL="", FAIL_ON="",
                    MAX_PAGES="200", SITEMEND_HTTP_HEADERS="", GITHUB_OUTPUT=gh_out,
+                   WAIVERS=".sitemend-waivers.json",
                    PATH=shim + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8")
         script = os.path.join(work, "step.sh")
         with open(script, "w", encoding="utf-8", newline="\n") as fh:
@@ -3047,9 +3219,18 @@ class TestGithubAction(unittest.TestCase):
                            encoding="utf-8", errors="replace")
         self.assertEqual(r.returncode, 0, "bash {0} failed:\n{1}{2}".format(
             bash, r.stdout[-2000:], r.stderr[-2000:]))
-        with open(gh_out, encoding="utf-8") as fh:
-            self.assertEqual(fh.read().split(), ["code=1", "result=fail"])
         self.assertTrue(os.path.isfile(os.path.join(work, "_sitemend", "out", "verify.md")))
+        with open(gh_out, encoding="utf-8") as fh:
+            return fh.read().split()
+
+    def test_the_audit_step_runs_check_on_the_folders_it_checked_out(self):
+        """No waivers file at the default path is not an error: the PR still fails."""
+        self.assertEqual(self._run_step(), ["code=1", "result=fail"])
+
+    def test_the_audit_step_reads_the_pull_requests_waivers(self):
+        self.assertEqual(self._run_step([{"rule": "S1-BROKEN-LINK", "url": "/",
+                                          "reason": "Page lands Monday"}]),
+                         ["code=0", "result=pass"])
 
 
 if __name__ == "__main__":
