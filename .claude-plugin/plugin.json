@@ -1,7 +1,7 @@
 {
   "name": "sitemend",
   "displayName": "sitemend",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "SEO regression tests for sites that live in a repo. Fails the PR when a change breaks crawling or indexing, cites the exact line, proposes each fix as a diff you approve, and re-crawls to prove it landed. Never invents search volume, keyword difficulty or backlink data.",
   "author": {
     "name": "surendhar-v",

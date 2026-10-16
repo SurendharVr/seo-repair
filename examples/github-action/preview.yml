@@ -23,7 +23,7 @@ jobs:
       github.event.deployment.environment != 'Production'
     runs-on: ubuntu-latest
     steps:
-      - uses: SurendharVr/sitemend@v1.5.0
+      - uses: SurendharVr/sitemend@v1.5.1
         with:
           url: ${{ github.event.deployment_status.environment_url }}
           baseline-url: https://www.example.com   # your production site

@@ -1,7 +1,7 @@
 ---
 name: sitemend
 description: "Crawl-driven SEO audit, repair planning, and implementation for a local site codebase or its dev server. Use when the user asks to audit, fix, or improve SEO; find indexing/crawl problems, orphan pages, duplicate content, keyword cannibalization, thin pages, broken internal links, missing or misleading schema, Core Web Vitals, or mobile usability; or to re-verify SEO after changes. Runs a real crawler and real Lighthouse, proposes every edit before applying it, and never invents search volume, keyword difficulty, or backlink data."
-version: 1.5.0
+version: 1.5.1
 ---
 
 # sitemend

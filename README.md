@@ -215,7 +215,7 @@ and quoted evidence; the full report and dashboard are attached to the run.
 - uses: actions/setup-node@v4
   with:
     node-version: 20
-- uses: SurendharVr/sitemend@v1.5.0
+- uses: SurendharVr/sitemend@v1.5.1
   with:
     build-command: npm ci && npm run build
     site-dir: out

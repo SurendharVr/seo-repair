@@ -2888,6 +2888,13 @@ class TestGithubAction(unittest.TestCase):
         with open(os.path.join(self.ROOT, "action.yml"), encoding="utf-8") as fh:
             return yaml.safe_load(fh)
 
+    def test_the_marketplace_accepts_the_metadata(self):
+        """REGRESSION: GitHub Marketplace refused to publish 1.5.0 because the action's
+        description was over its limit ("Description must be less than 125 characters")."""
+        a = self._action()
+        self.assertLess(len(a["description"]), 125)
+        self.assertTrue(a["name"] and a["branding"]["icon"] and a["branding"]["color"])
+
     def test_the_metadata_parses_and_every_used_input_is_declared(self):
         import re
         a = self._action()
