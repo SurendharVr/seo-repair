@@ -58,6 +58,15 @@ def worse(f, than):
             and SEV_ORDER.index(f["severity"]) < SEV_ORDER.index(than["severity"]))
 
 
+def blocks(f):
+    """Whether a new or worsened finding may fail the gate: critical or high, and
+    measured. A finding audit.py marks below high confidence is a judgement call --
+    two docs pages "competing" for the same terms, two blog posts "near-duplicate" --
+    and adding an ordinary sibling page must not fail a pull request over one. Those
+    are reported in the comment as advisory, never as the reason the check failed."""
+    return f["severity"] in ("critical", "high") and f.get("confidence", "high") == "high"
+
+
 MARKER = "<!-- sitemend-verify -->"
 
 
@@ -86,14 +95,19 @@ def markdown(doc, rows=50):
         for f in items[:rows]:
             pages = f.get("pages", [])
             p = ", ".join(pages[:5]) + (" +{0} more".format(len(pages) - 5) if len(pages) > 5 else "")
+            sev = f["severity"] + (" (advisory)" if f in doc.get("advisory", ()) else "")
             out.append("| {0} | {1} | {2} | {3} |".format(
-                f["severity"], cell(f["id"] + ": " + f.get("message", "")), cell(p),
+                sev, cell(f["id"] + ": " + f.get("message", "")), cell(p),
                 cell(f.get("evidence"))))
         if len(items) > rows:
             out.append("\n...and {0} more in verify.json.".format(len(items) - rows))
 
-    table("New", doc["new"], " (critical and high block the merge)" if doc["regressions"] else "")
-    table("Got worse", doc.get("escalated", []), " (blocks the merge)")
+    table("New", doc["new"], " (measured critical and high block the merge)" if doc["regressions"] else "")
+    table("Got worse", doc.get("escalated", []), " (measured ones block the merge)")
+    if doc.get("advisory"):
+        out.extend(["", "Advisory findings are judgement calls (for example two pages that look "
+                        "like they target the same terms). They are worth a look but never fail "
+                        "the check."])
     table("Closed", doc["closed"])
     return "\n".join(out) + "\n"
 
@@ -135,7 +149,8 @@ def main():
     def bysev(items):
         return {s: sum(1 for f in items if f["severity"] == s) for s in SEV_ORDER}
 
-    regressions = [f for f in new if f["severity"] in ("critical", "high")] + escalated
+    regressions = [f for f in new + escalated if blocks(f)]
+    advisory = [f for f in new + escalated if f["severity"] in ("critical", "high") and not blocks(f)]
     gate = "PASS" if not regressions else "FAIL"
 
     doc = {
@@ -145,6 +160,7 @@ def main():
         "closed": closed, "new": new, "changed": changed,
         "escalated": escalated,
         "regressions": regressions,
+        "advisory": advisory,
     }
     S.jdump(doc, args.out)
     md_path = os.path.splitext(args.out)[0] + ".md"

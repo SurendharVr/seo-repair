@@ -70,7 +70,12 @@ def audit(target, out, max_pages, site_name, render=False, render_limit=50):
 
 
 def worst_open(findings_path):
-    sev = {f["severity"] for f in json.load(open(findings_path, encoding="utf-8"))["findings"]}
+    """The worst severity among open MEASURED findings, as an index into SEVERITY.
+    Judgement calls (confidence below high) never decide --fail-on, for the same reason
+    they never fail the regression gate (verify.blocks)."""
+    with open(findings_path, encoding="utf-8") as f:
+        findings = json.load(f)["findings"]
+    sev = {f["severity"] for f in findings if f.get("confidence", "high") == "high"}
     return max((SEVERITY.index(s) for s in sev if s in SEVERITY), default=-1)
 
 

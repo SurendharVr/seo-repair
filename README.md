@@ -213,6 +213,9 @@ with a backlog today. One PR comment, updated on every push, lists the new and c
 findings with each one's page and quoted evidence; the full report and dashboard are
 attached to the run. For a stricter gate that also fails on findings the base already
 had, add `--fail-on high` to its `verify` step.
+Only measured findings fail the check. Judgement calls, such as two pages that seem to
+target the same terms (`S3-CANNIBALIZATION`) or near-duplicate text, are listed in the
+comment as advisory, because adding an ordinary sibling page must not fail a PR.
 
 To see what the comment looks like, open the
 [demo PR](https://github.com/SurendharVr/sitemend-demo/pull/2) in

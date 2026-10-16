@@ -757,6 +757,66 @@ class TestCli(Base):
         with self.assertRaises(SystemExit):
             sitemend.run("verify.py", *self._verify_args())
 
+    def test_fail_on_ignores_judgement_calls(self):
+        path = os.path.join(self.fx.root, "f.json")
+        with open(path, "w") as f:
+            json.dump({"findings": [{"severity": "high", "confidence": "medium"},
+                                    {"severity": "low"}]}, f)
+        self.assertEqual(sitemend.SEVERITY[sitemend.worst_open(path)], "low")
+
+    def test_adding_a_sibling_reference_page_passes_the_gate(self):
+        """The 2026-10-16 review's reproduction, end to end: a docs site with hx-get,
+        hx-post and hx-put reference pages gains hx-patch. The new cannibalization
+        findings are advisory and the gate passes."""
+        import random
+        rnd = random.Random(3)
+        words = ["w%d" % i for i in range(4000)]
+        topics = ["install", "config", "routing", "caching", "testing", "deploy", "plugins",
+                  "themes", "cli", "faq", "security", "migration"]
+        verbs = ["get", "post", "put"]
+
+        def nav():
+            return " ".join('<a href="/{0}/">{0}</a>'.format(t)
+                            for t in topics + ["hx-" + v for v in verbs])
+
+        def write(slug, title, desc):
+            body = "<h1>{0}</h1><p>{1}</p><nav>{2}</nav>".format(
+                title, " ".join(rnd.choice(words) for _ in range(400)), nav())
+            self.fx.write((slug + "/" if slug else "") + "index.html",
+                          page_html(title=title, desc=desc, body=body))
+
+        def verb(v):
+            write("hx-" + v, "hx-%s attribute reference for x" % v,
+                  "The hx-%s attribute issues a %s request to the specified url and swaps "
+                  "the returned element." % (v, v.upper()))
+
+        write("", "X framework documentation home",
+              "Documentation for the x framework: guides, reference and every attribute it supports.")
+        for t in topics:
+            write(t, "%s guide for the x framework docs" % t.title(),
+                  "How %s works in the x framework, with examples and every option explained "
+                  "in one place." % t)
+        for v in verbs:
+            verb(v)
+        out = os.path.join(tempfile.mkdtemp(prefix="sitemend-out-"), "o")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        sitemend.audit(self.fx.root, out, 200, None)
+        verbs.append("patch")
+        verb("patch")
+        write("", "X framework documentation home",
+              "Documentation for the x framework: guides, reference and every attribute it supports.")
+        r = subprocess.run(
+            [sys.executable, os.path.join(sitemend.HERE, "sitemend.py"), "verify", self.fx.root,
+             "--baseline", os.path.join(out, "findings.json"), "--out", out + "2"],
+            capture_output=True, text=True, encoding="utf-8",
+            env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+        self.addCleanup(shutil.rmtree, out + "2", True)
+        self.assertIn("REGRESSION GATE: PASS", r.stdout)
+        self.assertEqual(r.returncode, 0)
+        with open(os.path.join(out + "2", "verify.json"), encoding="utf-8") as fh:
+            new = [f["id"] for f in json.load(fh)["new"]]
+        self.assertIn("S3-CANNIBALIZATION", new)
+
 
 # --------------------------------------------------------------- schema
 
@@ -862,6 +922,32 @@ class TestVerify(unittest.TestCase):
     def f(fid, pages, evidence="e", severity="high", stage=2):
         return {"id": fid, "pages": pages, "evidence": evidence,
                 "severity": severity, "stage": stage, "message": fid}
+
+    def test_a_judgement_call_is_advisory_and_never_fails_the_gate(self):
+        """REGRESSION found by the 2026-10-16 review: adding an hx-patch reference page
+        next to hx-get/hx-post/hx-put failed the PR with three high S3-CANNIBALIZATION
+        findings. Cannibalization is a judgement (confidence medium); it is reported
+        as advisory and only measured findings fail the gate."""
+        d = tempfile.mkdtemp(prefix="sitemend-verify-")
+        self.addCleanup(shutil.rmtree, d, True)
+        guess = dict(self.f("S3-CANNIBALIZATION", ["/hx-get/", "/hx-patch/"]), confidence="medium")
+        paths = {}
+        for name, items in (("b", []), ("c", [guess])):
+            paths[name] = os.path.join(d, name + ".json")
+            with open(paths[name], "w") as fh:
+                json.dump({"findings": items}, fh)
+        r = sitemend.run("verify.py", "--baseline", paths["b"], "--current", paths["c"],
+                         "--out", os.path.join(d, "v.json"), ok=(0, 1))
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("REGRESSION GATE: PASS", r.stdout)
+        with open(os.path.join(d, "v.md"), encoding="utf-8") as fh:
+            self.assertIn("| high (advisory) | S3-CANNIBALIZATION", fh.read())
+
+    def test_a_measured_high_finding_still_fails_the_gate(self):
+        self.assertTrue(V.blocks(self.f("S1-BROKEN-LINK", ["/"])))
+        self.assertTrue(V.blocks(dict(self.f("S1-BROKEN-LINK", ["/"]), confidence="high")))
+        self.assertFalse(V.blocks(dict(self.f("S3-NEAR-DUPLICATE", ["/a", "/b"]), confidence="medium")))
+        self.assertFalse(V.blocks(self.f("S3-THIN", ["/a"], severity="medium")))
 
     def test_shrinking_page_list_is_changed_not_new(self):
         """REGRESSION: when a grouped finding's page list shrank after a partial fix,
