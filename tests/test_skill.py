@@ -448,6 +448,54 @@ class TestPairwiseCandidates(unittest.TestCase):
         pages = [{"minhash": sig, "word_count": 400}, {"minhash": sig, "word_count": 49}]
         self.assertEqual(audit.near_dup_candidates(pages), [])
 
+    def _jaccard(self, a, b):
+        return len(a & b) / len(a | b)
+
+    def _term_sets(self, seed=3, n=600):
+        """Template words on a quarter of the pages each (under the 35% boiler cut),
+        clusters sharing 6 to 11 of 12 terms, Zipf filler."""
+        import random
+        rnd = random.Random(seed)
+        vocab = ["t%d" % i for i in range(800)]
+        weights = [1 / (i + 1) for i in range(800)]
+        sigs, urls = {}, []
+        for i in range(n):
+            s = {"section%d" % (i % 4)}
+            if i < 240:
+                core = random.Random(i // 12).sample(vocab[100:], 12)
+                s |= set(core[:rnd.randint(6, 11)])
+            while len(s) < 12:
+                s.add(rnd.choices(vocab, weights)[0])
+            urls.append("/%d" % i)
+            sigs[urls[-1]] = s
+        return urls, sigs
+
+    def test_cannibal_candidates_include_every_pair_at_the_threshold(self):
+        urls, sigs = self._term_sets()
+        cand = set(audit.cannibal_candidates(urls, sigs))
+        hits = 0
+        for i in range(len(urls)):
+            for j in range(i + 1, len(urls)):
+                if self._jaccard(sigs[urls[i]], sigs[urls[j]]) >= audit.CANNIBAL_TERMS:
+                    hits += 1
+                    self.assertIn((i, j), cand)
+        self.assertGreater(hits, 100, "fixture must put pairs on both sides of 0.60")
+
+    def test_cannibal_candidates_handle_short_and_empty_sets(self):
+        """After template words are removed a page can keep 1 or 0 terms. One shared
+        term out of one is Jaccard 1.0 and must be compared; an empty set never is."""
+        urls = ["/a", "/b", "/c"]
+        sigs = {"/a": {"widget"}, "/b": {"widget"}, "/c": set()}
+        self.assertEqual(audit.cannibal_candidates(urls, sigs), [(0, 1)])
+
+    def test_templated_terms_do_not_make_every_pair_a_candidate(self):
+        """Guard against the rejected design: indexing every term makes 71% of these
+        pairs candidates (prefix filtering: 4%), and on a 4,000-page templated set it
+        ran slower than comparing every pair."""
+        urls, sigs = self._term_sets()
+        total = len(urls) * (len(urls) - 1) // 2
+        self.assertLess(len(audit.cannibal_candidates(urls, sigs)), total // 10)
+
 
 # --------------------------------------------------------------- thresholds
 

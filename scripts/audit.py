@@ -90,6 +90,25 @@ def near_dup_candidates(pages):
     return _bucket_pairs(buckets)
 
 
+def cannibal_candidates(urls, sigs):
+    """Pairs whose term sets could reach CANNIBAL_TERMS Jaccard. Jaccard >= t needs
+    |A & B| >= ceil(t * |A|), so with every set sorted rarest term first, two such sets
+    share a term among the first |A| - ceil(t * |A|) + 1 of each (prefix filtering).
+    Only those terms are indexed; common terms, which would pair up most of a
+    templated site, sort last and drop out."""
+    t = Fraction(str(CANNIBAL_TERMS))
+    df = defaultdict(int)
+    for u in urls:
+        for w in sigs[u]:
+            df[w] += 1
+    buckets = defaultdict(list)
+    for i, u in enumerate(urls):
+        terms = sorted(sigs[u], key=lambda w: (df[w], w))
+        for w in terms[:len(terms) - math.ceil(t * len(terms)) + 1]:
+            buckets[w].append(i)
+    return _bucket_pairs(buckets)
+
+
 UTILITY_RE = re.compile(r"/(404|403|500|offline|thank-?you|thanks)(\.html?)?/?$", re.I)
 
 
@@ -712,20 +731,18 @@ def audit(doc, vitals=None, schema_findings=None):
     boiler = {w for w, n in df.items() if n >= max(4, 0.35 * len(urls))}
     for u in urls:
         sigs[u] -= boiler
-    for i, a in enumerate(urls):
-        for b in urls[i + 1:]:
-            if frozenset((a, b)) in seen_pairs:
-                continue          # already reported as a duplicate; same root cause
-            if not sigs[a] or not sigs[b]:
-                continue
-            inter = sigs[a] & sigs[b]
-            union = sigs[a] | sigs[b]
-            j = len(inter) / len(union) if union else 0
-            if j >= CANNIBAL_TERMS:
-                out.append(finding("S3-CANNIBALIZATION", 3, "high",
-                                   "Two pages target near-identical head terms ({0}% overlap).".format(int(j * 100)),
-                                   [a, b], evidence="shared terms: " + ", ".join(sorted(inter)[:8]),
-                                   recipe="keyword-map", confidence="medium"))
+    for ia, ib in cannibal_candidates(urls, sigs):
+        a, b = urls[ia], urls[ib]
+        if frozenset((a, b)) in seen_pairs:
+            continue          # already reported as a duplicate; same root cause
+        inter = sigs[a] & sigs[b]
+        union = sigs[a] | sigs[b]
+        j = len(inter) / len(union) if union else 0
+        if j >= CANNIBAL_TERMS:
+            out.append(finding("S3-CANNIBALIZATION", 3, "high",
+                               "Two pages target near-identical head terms ({0}% overlap).".format(int(j * 100)),
+                               [a, b], evidence="shared terms: " + ", ".join(sorted(inter)[:8]),
+                               recipe="keyword-map", confidence="medium"))
 
     titles, descs = defaultdict(list), defaultdict(list)
     for p in live:
