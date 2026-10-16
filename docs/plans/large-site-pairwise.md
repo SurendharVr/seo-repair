@@ -1,6 +1,6 @@
 # Large sites: exact candidate filters for the pairwise content checks
 
-**Status:** plan, not implemented. Measured on 2026-10-16 against `main` at 8eb58a5 (1.4.3).
+**Status:** implemented in #34 (10,000-page audit: 544 s on `main`, 10 s after, identical output). Measured on 2026-10-16 against `main` at 8eb58a5 (1.4.3).
 
 **Goal:** `S3-NEAR-DUPLICATE` and `S3-CANNIBALIZATION` stop comparing every pair of live
 pages, with **byte-identical `audit()` output**: no pair found today is missed and no new
