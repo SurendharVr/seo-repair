@@ -26,7 +26,6 @@
 - **`SITEMEND_HTTP_HEADERS`** sends extra request headers in http mode, such as a Vercel
   protection-bypass secret. It is read from the environment only.
 - `release.yml` now runs on `vX.Y.Z` tags only, so the moving `v1` tag publishes nothing.
-- The example GitHub Action now pins `sitemend==1.4.3`.
 
 ## 1.4.3 - 2026-10-16
 

@@ -261,7 +261,7 @@ On another CI system, `sitemend check` does the same job:
 To see what the comment looks like, open the
 [demo PR](https://github.com/SurendharVr/sitemend-demo/pull/2) in
 [sitemend-demo](https://github.com/SurendharVr/sitemend-demo), a small static site
-running this exact workflow.
+running the earlier copy-paste version of this check; the comment format is the same.
 
 Output lands in `./sitemend-out`: `findings.json`, `SEO-REPORT-<date>.md` and a
 self-contained `dashboard.html`. Applying fixes stays a Claude Code job, because each
