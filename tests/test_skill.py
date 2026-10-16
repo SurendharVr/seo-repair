@@ -1903,6 +1903,16 @@ class TestPackaging(unittest.TestCase):
         skill = re.search(r"^version: (\S+)", self._read("SKILL.md"), re.M).group(1)
         self.assertEqual((py, plugin), (skill, skill))
 
+    def test_the_example_workflows_pin_this_version(self):
+        """The examples pin @vX.Y.Z so a release never changes a user's gate unasked;
+        they must name the version being released, not the last one."""
+        import re
+        py = re.search(r'^version = "([^"]+)"', self._read("pyproject.toml"), re.M).group(1)
+        for name in ("sitemend.yml", "preview.yml"):
+            pins = re.findall(r"SurendharVr/sitemend@v([0-9.]+)",
+                              self._read("examples", "github-action", name))
+            self.assertEqual(set(pins), {py}, name)
+
     def test_the_wheel_ships_every_script_and_the_dashboard_template(self):
         """pyproject maps scripts/ and assets/ into the wheel by directory, so a new script
         is picked up automatically -- but only if it is a module in scripts/."""
