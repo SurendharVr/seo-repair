@@ -171,7 +171,7 @@ what stops a page being crawled and indexed first, then decide what it should sa
 [Marketplace listing](https://github.com/marketplace/actions/sitemend-seo-regression-check):
 
 ```yaml
-- uses: SurendharVr/sitemend@v1.5.1
+- uses: SurendharVr/sitemend@v1.5.2
   with:
     site-dir: out   # your build output; see Build recipes below
 ```
@@ -226,7 +226,7 @@ and quoted evidence; the full report and dashboard are attached to the run.
 - uses: actions/setup-node@v4
   with:
     node-version: 20
-- uses: SurendharVr/sitemend@v1.5.1
+- uses: SurendharVr/sitemend@v1.5.2
   with:
     build-command: npm ci && npm run build
     site-dir: out

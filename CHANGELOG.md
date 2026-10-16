@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.5.2 - 2026-10-16
+
+The example workflows and README pin `@v1.5.2`. The three crawler fixes came out of scanning 20
+open-source docs sites, where they made sitemend report pages as missing that serve 200:
 
 - **A capped http crawl no longer calls hreflang or canonical targets it never reached
   broken.** `--max-pages` already kept uncrawled URLs out of `S1-SITEMAP-ORPHAN` and
