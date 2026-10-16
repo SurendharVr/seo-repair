@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.3 - 2026-10-16
 
 - **`--render` timeout is configurable, and the CI render job no longer flakes.** The
   per-page Chrome timeout (30 seconds) can be raised with `SITEMEND_RENDER_TIMEOUT`; the CI
