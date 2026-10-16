@@ -22,6 +22,8 @@ import subprocess
 import sys
 import tempfile
 
+import seolib as S
+
 METRICS = {
     "largest-contentful-paint": "LCP",
     "cumulative-layout-shift": "CLS",
@@ -86,18 +88,23 @@ def run_command(args, timeout):
     return subprocess.CompletedProcess(args, proc.returncode, out, err)
 
 
+def lighthouse_cmd(url, out_path, profile, nt=None, root=None, env=None):
+    """The Lighthouse command line. Chrome keeps its sandbox unless seolib.no_sandbox
+    says it cannot (root, or SITEMEND_NO_SANDBOX=1), the same rule as --render."""
+    flags = "--headless=new --disable-gpu" + (" --no-sandbox" if S.no_sandbox(nt, root, env) else "")
+    return ["npx", "--no-install", "lighthouse", url,
+            "--output=json", "--output-path=" + out_path,
+            "--only-categories=performance",
+            "--chrome-flags=" + flags,
+            "--quiet"] + PROFILES[profile]
+
+
 def run_one(url, profile, workdir, timeout=180):
     """Run Lighthouse once. Returns (metrics_dict, error_or_None)."""
     if not shutil.which("npx"):
         return None, "npx/lighthouse not found on PATH"
     out_path = os.path.join(workdir, "lh-{0}.json".format(abs(hash((url, profile)))))
-    cmd = [
-        "npx", "--no-install", "lighthouse", url,
-        "--output=json", "--output-path=" + out_path,
-        "--only-categories=performance",
-        "--chrome-flags=--headless=new --no-sandbox --disable-gpu",
-        "--quiet",
-    ] + PROFILES[profile]
+    cmd = lighthouse_cmd(url, out_path, profile)
 
     try:
         run_command(cmd, timeout)

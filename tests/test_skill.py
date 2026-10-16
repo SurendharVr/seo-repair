@@ -130,6 +130,52 @@ class TestUrlMapping(Base):
         self.fx.write("services.html", page_html(title="Services Page With A Fine Title Here"))
         self.assertNotIn("S1-BROKEN-LINK", self.fx.ids())
 
+    def test_any_non_http_scheme_is_not_a_page_link(self):
+        """REGRESSION found by the 2026-10-16 audit: skype:, viber:, geo: and ftp: links
+        resolved to /skype:echo123 and were reported as high S1-BROKEN-LINK."""
+        for href in ("skype:echo123?call", "viber://chat?number=1", "geo:37.7,-122.4",
+                     "ftp://files.x.org/a.zip", "mailto:a@b.c", "tel:+1"):
+            with self.subTest(href=href):
+                self.assertEqual(S.link_kind(href), "nonhttp")
+        for href in ("https://x.org/", "http://x.org/", "/a", "page.html", "./a:b"):
+            with self.subTest(href=href):
+                self.assertEqual(S.link_kind(href), "link")
+
+    def test_no_broken_link_for_app_scheme_links(self):
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="skype:echo123?call">Skype</a> ' + "word " * 300 + "</p>"))
+        self.assertNotIn("S1-BROKEN-LINK", self.fx.ids())
+
+
+class TestAbsoluteInternalLinks(Base):
+    """REGRESSION found by the 2026-10-16 audit: links written as absolute URLs on the
+    site's own origin were ignored, so every page of a Hugo/Jekyll-style site was a high
+    S2-ORPHAN and S2-UNREACHABLE, and its real broken links went unreported."""
+
+    def _findings(self, other=False):
+        host = "https://other.org" if other else "https://site.org"
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="https://site.org/about/">About</a> ' + "word " * 300 + "</p>"))
+        self.fx.write("about/index.html", page_html(
+            title="About Page With A Fine Long Title",
+            body='<h1>A</h1><p><a href="https://site.org/">Home</a> <a href="{0}/gone/">x</a> '
+                 .format(host) + "more " * 300 + "</p>"))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = "https://site.org"
+        return audit.audit(doc)["findings"]
+
+    def test_same_origin_absolute_links_are_inlinks(self):
+        ids = [f["id"] for f in self._findings()]
+        self.assertNotIn("S2-ORPHAN", ids)
+        self.assertNotIn("S2-UNREACHABLE", ids)
+
+    def test_same_origin_absolute_link_to_a_missing_page_is_broken(self):
+        broken = [f for f in self._findings() if f["id"] == "S1-BROKEN-LINK"]
+        self.assertEqual([f["detail"]["target"] for f in broken], ["/gone/"])
+
+    def test_another_origin_is_still_external(self):
+        self.assertNotIn("S1-BROKEN-LINK", [f["id"] for f in self._findings(other=True)])
+
 
 # --------------------------------------------------------------- exclusions
 
@@ -192,6 +238,25 @@ class TestExclusions(Base):
         self.assertTrue(crit, "a robots-blocked homepage is never a deliberate exclusion")
 
 
+class TestRobotsGroups(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: only the first User-agent: * group was
+    read. RFC 9309 combines every group that matches the same agent."""
+
+    TXT = ("User-agent: *\nDisallow: /admin/\n\nUser-agent: Googlebot\nDisallow: /tmp/\n\n"
+           "User-agent: *\nDisallow: /private/\n")
+
+    def test_groups_for_the_same_agent_are_merged(self):
+        r = S.Robots(self.TXT)
+        self.assertEqual(r.check("/private/x"), (False, "Disallow: /private/"))
+        self.assertEqual(r.check("/admin/x"), (False, "Disallow: /admin/"))
+        self.assertEqual(r.check("/tmp/x"), (True, None))
+
+    def test_a_named_agent_still_ignores_the_star_groups(self):
+        r = S.Robots(self.TXT)
+        self.assertEqual(r.check("/admin/x", agent="Googlebot"), (True, None))
+        self.assertEqual(r.check("/tmp/x", agent="Googlebot"), (False, "Disallow: /tmp/"))
+
+
 # --------------------------------------------------------------- Gate A
 
 class TestGateA(Base):
@@ -207,6 +272,22 @@ class TestGateA(Base):
                 self.assertLessEqual(f["stage"], 1,
                                      "stage {0} finding raised on a non-indexable page: {1}"
                                      .format(f["stage"], f["id"]))
+
+
+class TestIndexContradictionAliases(Base):
+    """REGRESSION found by the 2026-10-16 audit: a noindex services.html listed in the
+    sitemap as /services was medium S1-NOT-INDEXABLE, not the critical contradiction."""
+
+    def test_clean_url_in_sitemap_for_a_noindex_flat_file(self):
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="/services">s</a> ' + "word " * 300 + "</p>"))
+        self.fx.write("services.html", page_html(
+            title="Services Page With A Fine Title Here",
+            head_extra='<meta name="robots" content="noindex">'))
+        self.fx.write("sitemap.xml", "<urlset><url><loc>https://x.org/</loc></url>"
+                                     "<url><loc>https://x.org/services</loc></url></urlset>")
+        hit = [f for f in self.fx.audit()["findings"] if f["id"] == "S1-INDEX-CONTRADICTION"]
+        self.assertEqual([f["pages"] for f in hit], [["/services.html"]])
 
 
 # --------------------------------------------------------------- grouping
@@ -487,6 +568,24 @@ class TestCli(Base):
         self.assertEqual(sorted(os.listdir(self.fx.root)), before, "audit must not touch the site")
         self.assertGreaterEqual(sitemend.worst_open(findings), -1)
 
+    def test_verify_with_the_baseline_inside_out_still_compares(self):
+        """REGRESSION found by the 2026-10-16 audit: README's `verify --baseline
+        sitemend-out/findings.json` uses the default --out sitemend-out, so the audit
+        overwrote the baseline before verify.py read it, and the gate always passed."""
+        self.fx.write("index.html", page_html())
+        out = os.path.join(tempfile.mkdtemp(prefix="sitemend-out-"), "o")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        sitemend.audit(self.fx.root, out, 200, None)
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="/gone/">x</a> ' + "word " * 300 + "</p>"))
+        r = subprocess.run(
+            [sys.executable, os.path.join(sitemend.HERE, "sitemend.py"), "verify", self.fx.root,
+             "--baseline", os.path.join(out, "findings.json"), "--out", out],
+            capture_output=True, text=True, encoding="utf-8",
+            env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+        self.assertIn("REGRESSION GATE: FAIL", r.stdout)
+        self.assertNotEqual(r.returncode, 0)
+
     def test_rerun_does_not_audit_its_own_report(self):
         """REGRESSION: with --out inside the audited folder (the default when run as
         `audit .`), the second run crawled the first run's dashboard.html and reported
@@ -651,6 +750,36 @@ class TestVerify(unittest.TestCase):
         cur = [self.f("S2-HEADING-SKIP", ["/a", "/b"])]
         self.assertTrue(V.related(base[0], cur[0]))
 
+    def test_new_broken_target_on_the_same_page_is_new(self):
+        """REGRESSION found by the 2026-10-16 audit: fixing href="/a" while adding a
+        broken href="/b" on the same page read as one 'changed' finding and passed."""
+        a = dict(self.f("S1-BROKEN-LINK", ["/"], evidence='href="/a" -> /a'), detail={"target": "/a"})
+        b = dict(self.f("S1-BROKEN-LINK", ["/"], evidence='href="/b" -> /b'), detail={"target": "/b"})
+        self.assertFalse(V.related(a, b))
+
+    def test_same_broken_target_spelled_differently_is_still_changed(self):
+        a = dict(self.f("S1-BROKEN-LINK", ["/"], evidence='href="/a" -> /a'), detail={"target": "/a"})
+        b = dict(self.f("S1-BROKEN-LINK", ["/", "/x"], evidence='href="a" -> /a'), detail={"target": "/a"})
+        self.assertTrue(V.related(a, b))
+
+    def test_finding_that_gets_worse_fails_the_gate(self):
+        """REGRESSION found by the 2026-10-16 audit: S1-HOST-MISMATCH going high ->
+        critical (a preview host appeared) paired as 'changed' and passed."""
+        d = tempfile.mkdtemp(prefix="sitemend-verify-")
+        self.addCleanup(shutil.rmtree, d, True)
+        paths = {}
+        for name, sev, ev in (("b", "high", "canonical: www.x.org (3)"),
+                              ("c", "critical", "canonical: x-git-a.vercel.app (3)")):
+            paths[name] = os.path.join(d, name + ".json")
+            with open(paths[name], "w") as fh:
+                json.dump({"findings": [self.f("S1-HOST-MISMATCH", ["/"], evidence=ev, severity=sev)]}, fh)
+        r = sitemend.run("verify.py", "--baseline", paths["b"], "--current", paths["c"],
+                         "--out", os.path.join(d, "v.json"), ok=(0, 1))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("REGRESSION GATE: FAIL", r.stdout)
+        with open(os.path.join(d, "v.json"), encoding="utf-8") as fh:
+            self.assertEqual([f["id"] for f in json.load(fh)["escalated"]], ["S1-HOST-MISMATCH"])
+
     def test_unrelated_finding_is_new(self):
         self.assertFalse(V.related(self.f("S2-ORPHAN", ["/a"]), self.f("S2-ORPHAN", ["/z"])))
         self.assertFalse(V.related(self.f("S2-ORPHAN", ["/a"]), self.f("S3-THIN", ["/a"])))
@@ -814,6 +943,27 @@ class TestStageFiveOwnership(Base):
                        '{"ratingValue":"5","reviewCount":"9"}}</script>'))
         stage5 = [f for f in self.fx.audit()["findings"] if f["stage"] == 5]
         self.assertEqual(stage5, [], "stage 5 must come only from schema_check.py")
+
+
+class TestSchemaRespectsGateA(Base):
+    """REGRESSION found by the 2026-10-16 audit: a noindex page's broken JSON-LD was a
+    high S5 finding and blocked Gate C. Gate A covers stage 5 like every stage after 1."""
+
+    def _s5(self, robots_meta):
+        self.fx.write("index.html", page_html(
+            body='<h1>H</h1><p><a href="/draft.html">d</a> ' + "word " * 300 + "</p>"))
+        self.fx.write("draft.html", page_html(
+            title="Draft Page With A Long Enough Title",
+            head_extra=robots_meta + '<script type="application/ld+json">{"@type": bad}</script>'))
+        doc = self.fx.crawl()
+        schema = [f for p in doc["pages"] for f in schema_check.check_page(p)[0]]
+        return [f["id"] for f in audit.audit(doc, None, schema)["findings"] if f["stage"] == 5]
+
+    def test_noindex_page_gets_no_schema_findings(self):
+        self.assertEqual(self._s5('<meta name="robots" content="noindex">'), [])
+
+    def test_indexable_page_still_does(self):
+        self.assertEqual(self._s5(""), ["S5-SCHEMA-INVALID-JSON"])
 
 
 # ------------------------------------------------------- http mode: discovery
@@ -1678,6 +1828,24 @@ class TestVitalsCommand(unittest.TestCase):
         self.assertEqual(os.path.getsize(tick), before, "the grandchild is still running")
 
 
+class TestLighthouseSandbox(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: Lighthouse's Chrome always ran with
+    --no-sandbox; the render path drops the sandbox only as root or on opt-out."""
+
+    def flags(self, **kw):
+        cmd = vitals.lighthouse_cmd("http://h/", "o.json", "mobile", **kw)
+        return next(a for a in cmd if a.startswith("--chrome-flags="))
+
+    def test_sandbox_is_kept_by_default(self):
+        self.assertNotIn("--no-sandbox", self.flags(nt=False, root=False, env={}))
+        self.assertNotIn("--no-sandbox", self.flags(nt=True, root=False, env={}))
+
+    def test_root_or_the_opt_out_drops_it(self):
+        self.assertIn("--no-sandbox", self.flags(nt=False, root=True, env={}))
+        self.assertIn("--no-sandbox", self.flags(nt=False, root=False,
+                                                 env={"SITEMEND_NO_SANDBOX": "1"}))
+
+
 @unittest.skipUnless(os.environ.get("SITEMEND_LIGHTHOUSE_TEST") == "1",
                      "set SITEMEND_LIGHTHOUSE_TEST=1 (needs npx, Lighthouse and Chrome)")
 class TestVitalsLive(unittest.TestCase):
@@ -1818,6 +1986,24 @@ class TestHostMismatch(Base):
         """With no production host on offer, inference falls back to the first URL."""
         self.assertEqual(crawl.infer_base_url(["https://acme.netlify.app/"], [], []),
                          "https://acme.netlify.app")
+
+    def _offsite(self, base):
+        self.fx.write("index.html", page_html(
+            head_extra='<link rel="canonical" href="https://acme-widgets.com/">'))
+        doc = self.fx.crawl()
+        doc["meta"]["base_url"] = base
+        return [f for f in audit.audit(doc)["findings"] if f["id"] == "S1-CANONICAL-OFFSITE"]
+
+    def test_dev_server_or_preview_crawl_does_not_flag_production_canonicals(self):
+        """REGRESSION found by the 2026-10-16 audit: `sitemend audit http://127.0.0.1:8000/`
+        reported every correct production canonical as critical S1-CANONICAL-OFFSITE."""
+        for base in ("http://127.0.0.1:8000", "http://localhost:3000", "http://app.localhost:5173",
+                     "https://acme-git-feat.vercel.app"):
+            with self.subTest(base=base):
+                self.assertEqual(self._offsite(base), [])
+
+    def test_a_production_base_still_flags_an_offsite_canonical(self):
+        self.assertEqual(len(self._offsite("https://acme-widgets.org")), 1)
 
 
 class TestXRobotsTagNoindex(Base):
@@ -1980,9 +2166,9 @@ def serve(test, routes):
     return "http://127.0.0.1:%d/" % srv.server_address[1]
 
 
-def http_doc(base):
+def http_doc(base, max_pages=300):
     """crawl_http plus the robots/sitemap blocks crawl.main() would build."""
-    (pages, _, robots, sitemap, _, _, skipped, _, _) = crawl.crawl_http(base)
+    (pages, _, robots, sitemap, _, _, skipped, _, _) = crawl.crawl_http(base, max_pages)
     rb = S.Robots(robots)
     for p in pages:
         p["robots_allowed"], p["robots_rule"] = rb.check(p["url"])
@@ -1995,10 +2181,169 @@ def http_doc(base):
             "referenced_assets": [], "referenced_basenames": []}
 
 
+class TestHttpStartRedirect(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: a start URL redirecting to another host
+    (apex -> www, http -> https) skipped every page as off-site, crawl.py exited 0 with 0
+    pages, and every sitemap URL was reported as not existing."""
+
+    def _sites(self):
+        target = serve(self, {
+            "/": (200, "text/html", page_html(
+                body='<h1>H</h1><p><a href="/about/">a</a> ' + "word " * 300 + "</p>"), {}),
+            "/about/": (200, "text/html", page_html(title="About Page With A Fine Long Title"), {}),
+        })
+        apex = serve(self, {"/": (301, "text/html", "", {"Location": target})})
+        return apex, target
+
+    def test_crawl_follows_the_start_redirect(self):
+        apex, _ = self._sites()
+        pages = crawl.crawl_http(apex)[0]
+        self.assertEqual(sorted(p["url"] for p in pages), ["/", "/about/"])
+
+    def test_base_url_repeating_the_typed_origin_follows_it(self):
+        apex, target = self._sites()
+        d = tempfile.mkdtemp(prefix="sitemend-redir-")
+        self.addCleanup(shutil.rmtree, d, True)
+        out = os.path.join(d, "crawl.json")
+        subprocess.run([sys.executable, os.path.join(sitemend.HERE, "crawl.py"), "--mode", "http",
+                        "--start", apex, "--base-url", apex.rstrip("/"), "--out", out],
+                       capture_output=True, check=True)
+        with open(out, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["meta"]["base_url"], target.rstrip("/"))
+
+    def test_zero_pages_is_an_error_not_an_empty_audit(self):
+        dead = serve(self, {})
+        d = tempfile.mkdtemp(prefix="sitemend-dead-")
+        self.addCleanup(shutil.rmtree, d, True)
+        r = subprocess.run([sys.executable, os.path.join(sitemend.HERE, "crawl.py"), "--mode", "http",
+                            "--start", dead, "--out", os.path.join(d, "crawl.json")],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("crawled 0 pages", r.stderr)
+
+    def test_http_crawl_follows_absolute_links_on_its_own_origin(self):
+        routes = {"/": (200, "text/html", None, {}),
+                  "/about/": (200, "text/html", page_html(title="About Page With A Fine Long Title"), {})}
+        base = serve(self, routes)
+        routes["/"] = (200, "text/html", page_html(
+            body='<h1>H</h1><p><a href="{0}about/">a</a> '.format(base) + "word " * 300 + "</p>"), {})
+        self.assertEqual(sorted(p["url"] for p in crawl.crawl_http(base)[0]), ["/", "/about/"])
+
+
 STUB = ('<!doctype html><html><head><meta http-equiv="refresh" content="{0}">'
         '</head><body></body></html>')
 ON_PAGE = {"S3-TITLE-MISSING", "S3-VIEWPORT-MISSING", "S2-H1-MISSING", "S3-DESC-MISSING",
            "S1-CANONICAL-MISSING", "S3-LANG-MISSING", "S3-OG-MISSING", "S3-THIN"}
+
+
+class TestHttpMaxPagesTruncation(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: with --max-pages 5 on a 13-page site,
+    the 8 pages never fetched were reported as high S1-SITEMAP-ORPHAN ("does not
+    exist") and high S1-BROKEN-LINK. Not crawled is unknown, not missing."""
+
+    def test_uncrawled_urls_are_not_reported_missing(self):
+        links = "".join('<a href="/p{0}/">p{0}</a> '.format(i) for i in range(8))
+        routes = {"/": (200, "text/html", page_html(
+            body="<h1>H</h1><p>" + links + "word " * 300 + "</p>"), {})}
+        for i in range(8):
+            routes["/p%d/" % i] = (200, "text/html", page_html(
+                title="Page %d With A Long Enough Title Here" % i,
+                body='<h1>P</h1><p><a href="/">home</a> ' + ("w%d " % i) * 300 + "</p>"), {})
+        routes["/sitemap.xml"] = (200, "application/xml", "<urlset>" + "".join(
+            "<url><loc>https://x.org/p%d/</loc></url>" % i for i in range(8)) + "</urlset>", {})
+        doc = http_doc(serve(self, routes), max_pages=3)
+        self.assertTrue(any(s.get("not_crawled") for s in doc["meta"]["skipped"]))
+        ids = [f["id"] for f in audit.audit(doc)["findings"]]
+        for fid in ("S1-SITEMAP-ORPHAN", "S1-BROKEN-LINK", "S2-ORPHAN", "S2-UNREACHABLE"):
+            self.assertNotIn(fid, ids)
+
+
+class TestHttpSkipsNonHtmlBodies(unittest.TestCase):
+    """REGRESSION found by the 2026-10-16 audit: a link to a 60 MB file downloaded all of
+    it just to learn it was not HTML."""
+
+    def test_linked_binary_is_not_downloaded(self):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+
+        sent = [0]
+        home = page_html(body='<h1>H</h1><p><a href="/big.bin">get</a> ' + "word " * 300 + "</p>").encode()
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path != "/big.bin":
+                    body = home if self.path == "/" else b"nope"
+                    self.send_response(200 if self.path == "/" else 404)
+                    self.send_header("Content-Type", "text/html")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                size, chunk = 64 * 1024 * 1024, b"\0" * 65536
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(size))
+                self.end_headers()
+                try:
+                    for _ in range(size // len(chunk)):
+                        self.wfile.write(chunk)
+                        sent[0] += len(chunk)
+                except OSError:
+                    pass
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        pages = crawl.crawl_http("http://127.0.0.1:%d/" % srv.server_address[1])[0]
+        self.assertEqual([p["url"] for p in pages], ["/"])
+        self.assertLess(sent[0], 16 * 1024 * 1024)
+    def test_a_body_that_breaks_mid_read_is_skipped_not_fatal(self):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+
+        home = page_html(body='<h1>H</h1><p><a href="/broken/">b</a> ' + "word " * 300 + "</p>").encode()
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/broken/":
+                    # Promise 100000 bytes, send 10, then hang up.
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html")
+                    self.send_header("Content-Length", "100000")
+                    self.end_headers()
+                    self.wfile.write(b"<html><bo")
+                    self.wfile.flush()
+                    self.close_connection = True
+                    return
+                body = home if self.path == "/" else b"nope"
+                self.send_response(200 if self.path == "/" else 404)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        pages, _, _, _, _, _, skipped, _, _ = crawl.crawl_http("http://127.0.0.1:%d/" % srv.server_address[1])
+        self.assertEqual([p["url"] for p in pages], ["/"])
+        self.assertIn("/broken/", [s["url"] for s in skipped])
 
 
 class TestMetaRefresh(Base):
@@ -2118,6 +2463,23 @@ class TestSitemapDiscovery(Base):
         sev = {f["id"]: f["severity"] for f in self.fx.audit()["findings"]}
         self.assertEqual(sev["S1-ROBOTS-MISSING"], "low")
         self.assertEqual(sev["S1-SITEMAP-MISSING"], "medium")
+
+
+class TestSitemapStaysInsideRoot(Base):
+    """REGRESSION found by the 2026-10-16 audit: on Windows a robots.txt Sitemap: path
+    such as /C:/... or /..\\x was read from outside the audited folder."""
+
+    def test_robots_sitemap_path_cannot_leave_the_folder(self):
+        outside = tempfile.mkdtemp(prefix="sitemend-outside-")
+        self.addCleanup(shutil.rmtree, outside, True)
+        sm = os.path.join(outside, "sm.xml")
+        with open(sm, "w") as fh:
+            fh.write("<urlset><url><loc>https://x.org/LEAKED/</loc></url></urlset>")
+        self.fx.write("index.html", page_html())
+        for path in (sm.replace("\\", "/").lstrip("/"), os.path.relpath(sm, self.fx.root)):
+            with self.subTest(path=path):
+                self.fx.write("robots.txt", "User-agent: *\nSitemap: https://x.org/" + path + "\n")
+                self.assertEqual(self.fx.crawl()["sitemap"]["urls"], [])
 
 
 class TestUncrawlableBenchmark(Base):

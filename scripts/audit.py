@@ -75,6 +75,10 @@ PLACEHOLDER_NAMES = {"example.com", "example.org", "example.net", "example.edu",
                      "127.0.0.1", "0.0.0.0", "::1", "yourdomain.com", "yoursite.com",
                      "yourwebsite.com"}
 PLACEHOLDER_TLDS = (".example", ".test", ".invalid", ".localhost")
+# Where an audit is run from, as opposed to where the site lives: a dev server's loopback
+# address. Narrower than PLACEHOLDER_NAMES on purpose -- a base of example.com is a site
+# (a wrong one), and an example.community canonical on it is still off-site.
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 # Hosting platforms' per-deploy hostnames. One that differs from the base URL means a
 # preview build's URLs leaked into production, which makes S1-HOST-MISMATCH critical.
 PREVIEW_HOSTS = (".vercel.app", ".netlify.app", ".pages.dev", ".onrender.com",
@@ -94,6 +98,14 @@ def placeholder_host_of(url):
         return None
     host = urlsplit(url).hostname
     return host if is_placeholder_host(host) else None
+
+
+def is_crawl_host(host):
+    """A dev server or a preview deploy: an origin a site is audited on, not its own.
+    `sitemend audit <url>` makes the crawled origin the base URL, so against one of
+    these every correct production canonical would read as off-site."""
+    h = (host or "").lower()
+    return h in LOOPBACK_HOSTS or h.endswith(".localhost") or h.endswith(PREVIEW_HOSTS)
 
 
 OG_REQUIRED = ("og:title", "og:description", "og:image")
@@ -139,6 +151,17 @@ def hreflang_target(href, page_url, alias, base):
 def same_origin(url, base):
     a, b = urlsplit(url), urlsplit(base)
     return (a.scheme, a.netloc.lower()) == (b.scheme, b.netloc.lower())
+
+
+def internal_target(link, base):
+    """The site path a crawled link points at, or None when it leaves the site. An
+    absolute URL on the site's own origin (https://site.org/about/, as Hugo, Jekyll and
+    WordPress exports write) is as internal as href="/about/"."""
+    if link["kind"] == "internal":
+        return S.norm_path(link["resolved"])
+    if link["kind"] == "absolute" and base and same_origin(link["resolved"], base):
+        return path_of(link["resolved"])
+    return None
 
 
 def build_index(doc):
@@ -190,9 +213,14 @@ def audit(doc, vitals=None, schema_findings=None):
                            evidence=doc["robots"]["raw"][:200], recipe="robots-add-sitemap"))
 
     sitemap_paths = {path_of(u) for u in doc["sitemap"]["urls"]}
+    # URLs an http crawl queued but never fetched because --max-pages ran out. Whether
+    # they exist is unknown, so no finding may say they don't, and the link graph is
+    # partial, so orphan and click-depth findings are withheld for the whole run.
+    not_crawled = {S.canonical_http_path(s["url"]) for s in doc["meta"].get("skipped") or []
+                   if s.get("not_crawled")}
 
     for sp in sorted(sitemap_paths):
-        if sp not in alias:
+        if sp not in alias and S.canonical_http_path(sp) not in not_crawled:
             out.append(finding("S1-SITEMAP-ORPHAN", 1, "high",
                                "URL listed in sitemap.xml does not exist in the crawl.", [sp],
                                evidence="<loc>{0}</loc>".format(sp), recipe="sitemap-prune"))
@@ -204,7 +232,8 @@ def audit(doc, vitals=None, schema_findings=None):
                                    "Indexable page is missing from sitemap.xml.", [p["url"]],
                                    evidence=p["file"] or p["url"], recipe="sitemap-add"))
         if not ok:
-            in_sm = p["url"] in sitemap_paths
+            in_sm = p["url"] in sitemap_paths or any(
+                a in sitemap_paths for a in (p.get("aliases") or []))
             deliberate = is_utility(p["url"]) or (p.get("robots_allowed") is False
                                                   and p["url"] != home)
             if in_sm:
@@ -231,7 +260,8 @@ def audit(doc, vitals=None, schema_findings=None):
                                evidence=p["file"] or p["url"], recipe="canonical-add"))
             continue
         cpath = path_of(c)
-        if base and c.startswith("http") and not same_origin(c, base):
+        if (base and not is_crawl_host(urlsplit(base).hostname)
+                and c.startswith("http") and not same_origin(c, base)):
             out.append(finding("S1-CANONICAL-OFFSITE", 1, "critical",
                                "Canonical points to a different origin.", [p["url"]],
                                evidence=c, recipe="canonical-fix"))
@@ -335,10 +365,10 @@ def audit(doc, vitals=None, schema_findings=None):
     broken = defaultdict(list)
     for p in pages:
         for l in p["links"]:
-            if l["kind"] != "internal":
+            t = internal_target(l, base)
+            if t is None:
                 continue
-            t = S.norm_path(l["resolved"])
-            if t in alias or t in assets:
+            if t in alias or t in assets or S.canonical_http_path(t) in not_crawled:
                 continue
             if re.search(r"\.(css|js|png|jpe?g|webp|svg|ico|pdf|txt|xml|woff2?|mp4|webm)$", t, re.I):
                 continue
@@ -515,9 +545,7 @@ def audit(doc, vitals=None, schema_findings=None):
     inlinks = defaultdict(set)
     for p in pages:
         for l in p["links"]:
-            if l["kind"] != "internal":
-                continue
-            t = S.norm_path(l["resolved"])
+            t = internal_target(l, base)
             if t in alias and alias[t] != p["url"]:
                 inlinks[alias[t]].add(p["url"])
 
@@ -528,9 +556,7 @@ def audit(doc, vitals=None, schema_findings=None):
         nxt = []
         for u in frontier:
             for l in by_url[u]["links"]:
-                if l["kind"] != "internal":
-                    continue
-                t = S.norm_path(l["resolved"])
+                t = internal_target(l, base)
                 if t in alias and alias[t] not in depth:
                     depth[alias[t]] = depth[u] + 1
                     nxt.append(alias[t])
@@ -538,7 +564,7 @@ def audit(doc, vitals=None, schema_findings=None):
 
     for p in pages:
         u = p["url"]
-        if u == home:
+        if u == home or not_crawled:
             continue
         ok, _ = indexable[u]
         if not inlinks[u] and ok:
@@ -788,6 +814,10 @@ def audit(doc, vitals=None, schema_findings=None):
     # An inline copy here could not corroborate claims against page text and simply
     # double-reported through report.py's merge.
     for f in (schema_findings or []):
+        # Gate A holds here too: markup on a page that is not meant to be indexed is not
+        # worth fixing until it is, and must not block Gate C meanwhile.
+        if f["page"] in indexable and not indexable[f["page"]][0]:
+            continue
         out.append(finding(f["id"], 5, f["severity"], f["message"], [f["page"]],
                            evidence=f.get("evidence"), recipe="schema-fix"))
 

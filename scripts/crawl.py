@@ -484,11 +484,17 @@ def crawl_fs(root, base_url=None):
     if os.path.isfile(rp):
         robots_txt = read_text(rp)
 
+    real_root = os.path.realpath(root)
+
     def read_site_file(path):
-        if ".." in path.split("/"):
-            return ""
-        fp = os.path.join(root, path.lstrip("/").replace("/", os.sep))
-        return read_text(fp) if os.path.isfile(fp) else ""
+        # The path comes from the site's own robots.txt. On Windows /C:/x or /..\x would
+        # otherwise resolve outside the folder being audited.
+        fp = os.path.realpath(os.path.join(root, path.lstrip("/").replace("/", os.sep)))
+        try:
+            inside = os.path.commonpath([fp, real_root]) == real_root
+        except ValueError:          # a different drive on Windows
+            inside = False
+        return read_text(fp) if inside and os.path.isfile(fp) else ""
 
     sitemap_xml = discover_sitemap(robots_txt, read_site_file)
 
@@ -624,6 +630,15 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
 
     sess = requests.Session()
     sess.headers["User-Agent"] = "sitemend-crawler/1.0 (+local audit)"
+    # Crawl the origin the start URL lands on. apex -> www and http -> https are how a
+    # site is served, not off-site links: taking the typed origin skipped every page as
+    # "redirects off-site" and the crawl came back empty.
+    try:
+        landed = sess.get(start, timeout=timeout, allow_redirects=True, stream=True)
+        landed.close()
+        start = landed.url
+    except Exception:
+        pass
     origin = "{0}://{1}".format(*urlsplit(start)[:2])
 
     # The sitemap is fetched first because it seeds the frontier. A pure link walk cannot
@@ -655,13 +670,21 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
         seen.add(path)
         url = origin + path
         try:
-            r = sess.get(url, timeout=timeout, allow_redirects=True)
+            # stream=True: only the headers are read here. A linked PDF or video is never
+            # downloaded just to learn it is not HTML; HTML bodies are read on r.text.
+            r = sess.get(url, timeout=timeout, allow_redirects=True, stream=True)
         except Exception as e:
             skipped.append({"url": path, "reason": str(e)[:200]})
             continue
 
         ctype = r.headers.get("Content-Type", "")
         if "html" not in ctype.lower():
+            r.close()
+            continue
+        try:
+            _ = r.content   # an HTML body: read it now, so every branch below releases the connection
+        except Exception as e:
+            skipped.append({"url": path, "reason": str(e)[:200]})
             continue
 
         if r.status_code >= 400:
@@ -742,11 +765,19 @@ def crawl_http(start, max_pages=300, timeout=20, render=False, render_limit=50):
 
         if r.status_code == 200:
             for l in rec["links"]:
-                if l["kind"] != "internal":
+                t = audit.internal_target(l, origin)
+                if t is None:
                     continue
-                nxt = S.canonical_http_path(l["resolved"])
+                nxt = S.canonical_http_path(t)
                 if nxt not in seen:
                     queue.append(nxt)
+
+    # --max-pages stopped the walk with URLs still queued. They were never fetched, so
+    # whether they exist is unknown: audit.py must not report them as sitemap orphans or
+    # broken links, and the link graph it builds is partial.
+    for path in dict.fromkeys(q for q in queue if q not in seen):
+        skipped.append({"url": path, "reason": "not crawled: --max-pages reached",
+                        "not_crawled": True})
 
     for p in pages:
         extra = redirect_aliases.get(p["url"])
@@ -785,7 +816,6 @@ def main():
         (pages, assets, robots_txt, sitemap_xml, extras, excluded,
          skipped, refs, names) = crawl_fs(args.root, args.base_url)
         source = os.path.abspath(args.root)
-        soft404 = None
     else:
         if not args.start:
             ap.error("--start is required in http mode")
@@ -793,7 +823,18 @@ def main():
          skipped, refs, names) = crawl_http(args.start, args.max_pages, render=args.render,
                                   render_limit=args.render_limit)
         source = args.start
-        soft404 = probe_soft404(args.start)
+
+    if not pages:
+        reason = skipped[0]["reason"] if skipped else "no HTML pages found"
+        print("ERROR: crawled 0 pages from {0} ({1}). Nothing to audit.".format(source, reason),
+              file=sys.stderr)
+        return 1
+    soft404 = probe_soft404(pages[0]["final_url"]) if args.mode == "http" else None
+    if args.mode == "http" and args.base_url and audit.same_origin(args.base_url, args.start):
+        # A start URL that redirected is crawled where it landed (crawl_http), and a
+        # --base-url that only repeats the typed origin (as sitemend.py passes) follows it.
+        landed = urlsplit(pages[0]["final_url"])
+        args.base_url = "{0}://{1}".format(landed.scheme, landed.netloc)
 
     robots = S.Robots(robots_txt)
     sm_urls, sm_errs = S.parse_sitemap(sitemap_xml)
@@ -847,8 +888,12 @@ def main():
             sum(1 for p in pages if p.get("rendered")), len(pages)))
     if excluded:
         print("excluded build dirs: " + ", ".join("{0} ({1} files)".format(e["dir"], e["files"]) for e in excluded))
-    if skipped:
-        print("skipped {0} files".format(len(skipped)))
+    not_crawled = sum(1 for s in skipped if s.get("not_crawled"))
+    if not_crawled:
+        print("stopped at --max-pages {0}: {1} queued URL(s) not crawled, and not reported "
+              "as missing".format(args.max_pages, not_crawled))
+    if len(skipped) > not_crawled:
+        print("skipped {0} files".format(len(skipped) - not_crawled))
     print("wrote " + args.out)
 
 

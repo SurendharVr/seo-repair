@@ -157,9 +157,12 @@ def link_kind(href):
     low = h.lower()
     if low.startswith("#"):
         return "anchor"
-    for scheme in ("mailto:", "tel:", "javascript:", "sms:", "whatsapp:", "data:"):
-        if low.startswith(scheme):
-            return "nonhttp"
+    # Any URI scheme other than http(s) -- mailto:, tel:, javascript:, but also skype:,
+    # viber:, geo:, ftp: -- is not a page of this site. Resolved as a path, skype:x
+    # became /skype:x and was reported as a broken internal link.
+    m = re.match(r"([a-z][a-z0-9+.\-]*):", low)
+    if m and m.group(1) not in ("http", "https"):
+        return "nonhttp"
     return "link"
 
 
@@ -228,20 +231,14 @@ class Robots:
     def check(self, path, agent="*"):
         """Return (allowed, matched_rule). Longest matching rule wins."""
         agent = agent.lower()
-        group = None
-        for g in self.groups:
-            if agent in g["agents"]:
-                group = g
-                break
-        if group is None:
-            for g in self.groups:
-                if "*" in g["agents"]:
-                    group = g
-                    break
-        if group is None:
+        # RFC 9309 2.2.1: every group naming the agent applies, combined; only when none
+        # does do the * groups apply (combined the same way).
+        groups = ([g for g in self.groups if agent in g["agents"]]
+                  or [g for g in self.groups if "*" in g["agents"]])
+        if not groups:
             return True, None
         best = None
-        for allow, pattern in group["rules"]:
+        for allow, pattern in (r for g in groups for r in g["rules"]):
             ln = self._match(pattern, path)
             if ln is None:
                 continue
@@ -302,21 +299,29 @@ def find_chrome():
     return next((p for p in CHROME_PATHS if os.path.isfile(p)), None)
 
 
+def no_sandbox(nt=None, root=None, env=None):
+    """Whether Chrome must run with --no-sandbox, which runs the audited site's
+    JavaScript without Chrome's sandbox: only as root (Chrome refuses to start
+    otherwise) or when SITEMEND_NO_SANDBOX=1 (containers, some CI images).
+    nt/root/env are parameters so tests need no particular OS."""
+    nt = os.name == "nt" if nt is None else nt
+    env = os.environ if env is None else env
+    root = (not nt and os.geteuid() == 0) if root is None else root
+    return not nt and bool(root or env.get("SITEMEND_NO_SANDBOX") == "1")
+
+
 def chrome_cmd(chrome, url, profile, nt=None, root=None, env=None):
     """The headless-Chrome command line. --no-sandbox runs the audited site's JavaScript
     without Chrome's sandbox, so it is added only for root (Chrome refuses to start as
     root otherwise) or when SITEMEND_NO_SANDBOX=1 (containers, some CI images).
     nt/root/env are parameters so tests need no particular OS."""
-    nt = os.name == "nt" if nt is None else nt
-    env = os.environ if env is None else env
-    root = (not nt and os.geteuid() == 0) if root is None else root
     # A fresh profile otherwise starts component-updater and other background fetches
     # on launch; they are not the page's own requests and only cost time on a slow
     # network. Puppeteer and Lighthouse launch Chrome with the same two flags.
     cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
            "--disable-background-networking", "--disable-component-update",
            "--user-data-dir=" + profile, "--virtual-time-budget=8000", "--dump-dom", url]
-    if not nt and (root or env.get("SITEMEND_NO_SANDBOX") == "1"):
+    if no_sandbox(nt, root, env):
         cmd.insert(1, "--no-sandbox")
     return cmd
 
