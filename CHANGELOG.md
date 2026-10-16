@@ -4,7 +4,7 @@
 
 - **The Action can be published to GitHub Marketplace.** Its description was 193
   characters, and Marketplace refuses anything from 125 up, so 1.5.0 could not be listed.
-  It is now 113 characters, and a test keeps it under the limit. No behaviour changed;
+  It is now 107 characters, and a test keeps it under the limit. No behaviour changed;
   the examples pin `@v1.5.1`.
 
 ## 1.5.0 - 2026-10-16
