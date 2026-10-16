@@ -5,7 +5,9 @@ name: release
 # repo sitemend, workflow release.yml, environment pypi. No API token is stored anywhere.
 on:
   push:
-    tags: ["v*"]
+    # Version tags only. The moving major tag (v1) that Marketplace users pin is pushed
+    # on every release and must not start a second, failing publish.
+    tags: ["v*.*.*"]
 
 jobs:
   pypi:

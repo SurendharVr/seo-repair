@@ -79,6 +79,33 @@ def worst_open(findings_path):
     return max((SEVERITY.index(s) for s in sev if s in SEVERITY), default=-1)
 
 
+def check(head, base, out, max_pages, fail_on=None):
+    """The CI entry point; returns the exit code.
+
+    With base (the base branch's built folder, or production's URL): audit both, then fail
+    only on measured critical/high findings that head added or made worse (verify.py's
+    gate), and leave <out>/verify.md for a pull-request comment. Without base (a push to
+    main, a first run): audit head alone and fail on fail_on, default critical. fail_on
+    with a base is the stricter mode: it also fails on findings the base already had.
+    """
+    os.makedirs(out, exist_ok=True)
+    code = 0
+    if base:
+        base_findings = audit(base, os.path.join(out, "base"), max_pages, None)
+        head_findings = audit(head, os.path.join(out, "head"), max_pages, None)
+        r = run("verify.py", "--baseline", base_findings, "--current", head_findings,
+                "--out", os.path.join(out, "verify.json"), ok=(0, 1))
+        print(r.stdout.rstrip())
+        code = r.returncode
+    else:
+        head_findings = audit(head, os.path.join(out, "head"), max_pages, None)
+        fail_on = fail_on or "critical"
+    if fail_on and worst_open(head_findings) >= SEVERITY.index(fail_on):
+        print("FAIL: open finding at '{0}' or worse".format(fail_on))
+        code = 1
+    return code
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -95,7 +122,17 @@ def main():
                         help="max pages to render, ~5 s each (default 50)")
     sub.choices["verify"].add_argument("--baseline", required=True,
                                        help="findings.json from an earlier audit")
+    cp = sub.add_parser("check", help="CI: compare a change with its base, fail on what it broke")
+    cp.add_argument("head", help="the change: a built site folder, or a URL such as a preview deploy")
+    cp.add_argument("--base", help="what it is compared with: the base branch's built folder, "
+                                   "or the production URL")
+    cp.add_argument("--out", default="sitemend-out")
+    cp.add_argument("--max-pages", type=int, default=200)
+    cp.add_argument("--fail-on", choices=SEVERITY[1:],
+                    help="also fail while any measured finding at this severity or worse is open")
     args = ap.parse_args()
+    if args.cmd == "check":
+        sys.exit(check(args.head, args.base, args.out, args.max_pages, args.fail_on))
 
     baseline = None
     if args.cmd == "verify":

@@ -1903,6 +1903,16 @@ class TestPackaging(unittest.TestCase):
         skill = re.search(r"^version: (\S+)", self._read("SKILL.md"), re.M).group(1)
         self.assertEqual((py, plugin), (skill, skill))
 
+    def test_the_example_workflows_pin_this_version(self):
+        """The examples pin @vX.Y.Z so a release never changes a user's gate unasked;
+        they must name the version being released, not the last one."""
+        import re
+        py = re.search(r'^version = "([^"]+)"', self._read("pyproject.toml"), re.M).group(1)
+        for name in ("sitemend.yml", "preview.yml"):
+            pins = re.findall(r"SurendharVr/sitemend@v([0-9.]+)",
+                              self._read("examples", "github-action", name))
+            self.assertEqual(set(pins), {py}, name)
+
     def test_the_wheel_ships_every_script_and_the_dashboard_template(self):
         """pyproject maps scripts/ and assets/ into the wheel by directory, so a new script
         is picked up automatically -- but only if it is a module in scripts/."""
@@ -2772,6 +2782,171 @@ class TestHostAgreement(Base):
     def test_agreeing_on_a_preview_host_stays_critical(self):
         f = self._audit("acme-git-main.vercel.app")
         self.assertEqual([x["severity"] for x in f if x["id"] == "S1-HOST-MISMATCH"], ["critical"])
+
+class TestCheckCommand(unittest.TestCase):
+    """`sitemend check` is what the GitHub Action runs: compare a change with its base and
+    fail only on what the change broke. Folders for a static build, URLs for a preview."""
+
+    def _site(self, broken=False):
+        fx = Fixture()
+        self.addCleanup(fx.cleanup)
+        link = '<a href="/gone/">x</a> ' if broken else ""
+        fx.write("index.html", page_html(body="<h1>H</h1><p>" + link + "word " * 300 + "</p>"))
+        return fx.root
+
+    def _out(self):
+        d = tempfile.mkdtemp(prefix="sitemend-check-")
+        self.addCleanup(shutil.rmtree, d, True)
+        return os.path.join(d, "out")
+
+    def test_a_change_that_breaks_a_link_fails_and_leaves_a_comment(self):
+        out = self._out()
+        code = sitemend.check(self._site(broken=True), self._site(), out, 200)
+        self.assertEqual(code, 1)
+        with open(os.path.join(out, "verify.md"), encoding="utf-8") as fh:
+            self.assertIn("S1-BROKEN-LINK", fh.read())
+
+    def test_an_unchanged_site_passes(self):
+        self.assertEqual(sitemend.check(self._site(), self._site(), self._out(), 200), 0)
+
+    def test_without_a_base_it_fails_only_on_fail_on(self):
+        broken = self._site(broken=True)          # one high finding, no critical
+        self.assertEqual(sitemend.check(broken, None, self._out(), 200), 0)
+        self.assertEqual(sitemend.check(broken, None, self._out(), 200, "high"), 1)
+
+    def test_a_preview_url_compared_with_production_passes_when_nothing_changed(self):
+        """The same site on two origins (production and a preview) is not a regression:
+        no finding's evidence may depend on the origin it was crawled from."""
+        routes = {"/": (200, "text/html", page_html(
+                      body='<h1>H</h1><p><a href="/about/">a</a> ' + "word " * 300 + "</p>"), {}),
+                  "/about/": (200, "text/html", page_html(title="About Page With A Fine Long Title"), {})}
+        prod, preview = serve(self, routes), serve(self, routes)
+        out = self._out()
+        self.assertEqual(sitemend.check(preview, prod, out, 50), 0)
+        with open(os.path.join(out, "verify.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["new"], [])
+
+class TestExtraHeaders(unittest.TestCase):
+    """A Vercel preview behind Deployment Protection answers 401 until the request carries
+    its bypass header. The header comes from SITEMEND_HTTP_HEADERS, never the command line."""
+
+    def test_parses_name_value_lines(self):
+        env = {"SITEMEND_HTTP_HEADERS": "x-vercel-protection-bypass: s3cret\n\nbad line\nX-A:b:c\n"}
+        self.assertEqual(crawl.extra_headers(env), {"x-vercel-protection-bypass": "s3cret", "X-A": "b:c"})
+        self.assertEqual(crawl.extra_headers({}), {})
+
+    def test_a_protected_preview_is_crawled_with_the_header(self):
+        try:
+            import requests  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("requests not installed (http mode is optional)")
+        import http.server
+        import threading
+        home = page_html().encode()
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                ok = self.headers.get("x-vercel-protection-bypass") == "s3cret" and self.path == "/"
+                body = home if ok else b"nope"
+                self.send_response(200 if ok else 401)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        base = "http://127.0.0.1:%d/" % srv.server_address[1]
+        self.assertEqual(crawl.crawl_http(base)[0], [])
+        old = os.environ.get("SITEMEND_HTTP_HEADERS")
+        os.environ["SITEMEND_HTTP_HEADERS"] = "x-vercel-protection-bypass: s3cret"
+        try:
+            self.assertEqual([p["url"] for p in crawl.crawl_http(base)[0]], ["/"])
+        finally:
+            if old is None:
+                os.environ.pop("SITEMEND_HTTP_HEADERS")
+            else:
+                os.environ["SITEMEND_HTTP_HEADERS"] = old
+
+
+class TestGithubAction(unittest.TestCase):
+    """action.yml is the product's front door. CI's `action` job runs it for real on every
+    pull request; these tests catch the cheap mistakes first, on every platform."""
+
+    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+
+    def _action(self):
+        try:
+            import yaml
+        except ImportError:
+            raise unittest.SkipTest("pyyaml not installed")
+        with open(os.path.join(self.ROOT, "action.yml"), encoding="utf-8") as fh:
+            return yaml.safe_load(fh)
+
+    def test_the_metadata_parses_and_every_used_input_is_declared(self):
+        import re
+        a = self._action()
+        self.assertEqual(a["runs"]["using"], "composite")
+        with open(os.path.join(self.ROOT, "action.yml"), encoding="utf-8") as fh:
+            used = set(re.findall(r"inputs\.([a-z-]+)", fh.read()))
+        self.assertLessEqual(used, set(a["inputs"]))
+
+    @staticmethod
+    def _bash():
+        """A bash that runs this filesystem's scripts. On Windows a bare "bash" resolves to
+        System32's bash.exe, the WSL launcher, before anything on PATH (GitHub's Windows
+        runners have it, so the step failed there), so use the Git Bash beside git.exe."""
+        if os.name != "nt":
+            return shutil.which("bash")
+        git = shutil.which("git")
+        for rel in (("..", "bin", "bash.exe"), ("..", "..", "bin", "bash.exe")):
+            cand = os.path.normpath(os.path.join(os.path.dirname(git or ""), *rel))
+            if git and os.path.isfile(cand):
+                return cand
+        return None
+
+    def test_the_audit_step_runs_check_on_the_folders_it_checked_out(self):
+        """Run the action's own shell step with bash against two prepared folders, the
+        way the runner would after checkout and build."""
+        bash = self._bash()
+        if not bash:
+            raise unittest.SkipTest("bash not available")
+        step = next(s for s in self._action()["runs"]["steps"] if s.get("id") == "check")
+        work = tempfile.mkdtemp(prefix="sitemend-action-")
+        self.addCleanup(shutil.rmtree, work, True)
+        for side, broken in (("head", True), ("base", False)):
+            link = '<a href="/gone/">x</a> ' if broken else ""
+            full = os.path.join(work, "_sitemend", side, "out", "index.html")
+            os.makedirs(os.path.dirname(full))
+            with open(full, "w", encoding="utf-8") as fh:
+                fh.write(page_html(body="<h1>H</h1><p>" + link + "word " * 300 + "</p>"))
+        shim = os.path.join(work, "bin")
+        os.makedirs(shim)
+        with open(os.path.join(shim, "sitemend"), "w", newline="\n") as fh:
+            fh.write('#!/bin/sh\nexec "{0}" "{1}" "$@"\n'.format(
+                sys.executable.replace("\\", "/"),
+                os.path.join(sitemend.HERE, "sitemend.py").replace("\\", "/")))
+        os.chmod(os.path.join(shim, "sitemend"), 0o755)
+        gh_out = os.path.join(work, "gh_output")
+        env = dict(os.environ, SITE_DIR="out", URL="", BASELINE_URL="", FAIL_ON="",
+                   MAX_PAGES="200", SITEMEND_HTTP_HEADERS="", GITHUB_OUTPUT=gh_out,
+                   PATH=shim + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8")
+        script = os.path.join(work, "step.sh")
+        with open(script, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(step["run"])
+        r = subprocess.run([bash, script], cwd=work, env=env, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        self.assertEqual(r.returncode, 0, "bash {0} failed:\n{1}{2}".format(
+            bash, r.stdout[-2000:], r.stderr[-2000:]))
+        with open(gh_out, encoding="utf-8") as fh:
+            self.assertEqual(fh.read().split(), ["code=1", "result=fail"])
+        self.assertTrue(os.path.isfile(os.path.join(work, "_sitemend", "out", "verify.md")))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

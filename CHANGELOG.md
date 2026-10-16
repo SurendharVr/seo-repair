@@ -12,7 +12,20 @@
   that could reach the threshold, chosen by filters that can't drop a qualifying pair
   (MinHash banding and prefix filtering). On a generated 10,000-page site the audit went
   from 544 s to 10 s with identical output.
-- The example GitHub Action now pins `sitemend==1.4.3`.
+- **A GitHub Action: `uses: SurendharVr/sitemend@v1.5.0`.** It checks out the pull request
+  and its base branch, runs your `build-command` in both, audits the built `site-dir`, and
+  fails only on what the PR broke, with one updated PR comment. The README has build
+  recipes for Next.js (static export), Astro, Docusaurus, SvelteKit, VitePress, Eleventy
+  and Hugo. Before this, the example workflow audited the unbuilt checkout, which for a
+  framework site meant 0 pages.
+- **Preview deploys.** `examples/github-action/preview.yml` runs on a successful Vercel or
+  Netlify preview, compares it with production, and comments on the PR the commit belongs
+  to: the path for server-rendered sites.
+- **`sitemend check HEAD --base BASE`**: the comparison the Action runs, as one command for
+  any CI, with folders or URLs.
+- **`SITEMEND_HTTP_HEADERS`** sends extra request headers in http mode, such as a Vercel
+  protection-bypass secret. It is read from the environment only.
+- `release.yml` now runs on `vX.Y.Z` tags only, so the moving `v1` tag publishes nothing.
 
 ## 1.4.3 - 2026-10-16
 
