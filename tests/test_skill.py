@@ -2896,10 +2896,25 @@ class TestGithubAction(unittest.TestCase):
             used = set(re.findall(r"inputs\.([a-z-]+)", fh.read()))
         self.assertLessEqual(used, set(a["inputs"]))
 
+    @staticmethod
+    def _bash():
+        """A bash that runs this filesystem's scripts. On Windows a bare "bash" resolves to
+        System32's bash.exe, the WSL launcher, before anything on PATH (GitHub's Windows
+        runners have it, so the step failed there), so use the Git Bash beside git.exe."""
+        if os.name != "nt":
+            return shutil.which("bash")
+        git = shutil.which("git")
+        for rel in (("..", "bin", "bash.exe"), ("..", "..", "bin", "bash.exe")):
+            cand = os.path.normpath(os.path.join(os.path.dirname(git or ""), *rel))
+            if git and os.path.isfile(cand):
+                return cand
+        return None
+
     def test_the_audit_step_runs_check_on_the_folders_it_checked_out(self):
         """Run the action's own shell step with bash against two prepared folders, the
         way the runner would after checkout and build."""
-        if not shutil.which("bash"):
+        bash = self._bash()
+        if not bash:
             raise unittest.SkipTest("bash not available")
         step = next(s for s in self._action()["runs"]["steps"] if s.get("id") == "check")
         work = tempfile.mkdtemp(prefix="sitemend-action-")
@@ -2924,7 +2939,10 @@ class TestGithubAction(unittest.TestCase):
         script = os.path.join(work, "step.sh")
         with open(script, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(step["run"])
-        subprocess.run(["bash", script], cwd=work, env=env, capture_output=True, check=True)
+        r = subprocess.run([bash, script], cwd=work, env=env, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        self.assertEqual(r.returncode, 0, "bash {0} failed:\n{1}{2}".format(
+            bash, r.stdout[-2000:], r.stderr[-2000:]))
         with open(gh_out, encoding="utf-8") as fh:
             self.assertEqual(fh.read().split(), ["code=1", "result=fail"])
         self.assertTrue(os.path.isfile(os.path.join(work, "_sitemend", "out", "verify.md")))
