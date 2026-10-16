@@ -1913,6 +1913,16 @@ class TestPackaging(unittest.TestCase):
             pins = re.findall(r"SurendharVr/sitemend@v([0-9.]+)", self._read(*parts))
             self.assertEqual(set(pins), {py}, "/".join(parts))
 
+    def test_the_readme_states_the_real_test_count(self):
+        """The README said 189 tests when the suite ran 241. A tool sold on not inventing
+        numbers cannot carry a stale one; this is the runner's own count, skips included."""
+        import re
+        real = unittest.defaultTestLoader.loadTestsFromModule(
+            sys.modules[type(self).__module__]).countTestCases()
+        stated = re.findall(r"\b(\d+) tests\b", self._read("README.md"))
+        self.assertTrue(stated)
+        self.assertEqual(set(stated), {str(real)})
+
     def test_the_wheel_ships_every_script_and_the_dashboard_template(self):
         """pyproject maps scripts/ and assets/ into the wheel by directory, so a new script
         is picked up automatically -- but only if it is a module in scripts/."""

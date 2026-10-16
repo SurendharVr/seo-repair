@@ -7,6 +7,9 @@
   threshold or severity change is a minor release whose entry names the affected rule IDs,
   and the Action inputs, `findings.json` shape and CLI flags change only in a major
   release. The README's Action section summarizes it. No behaviour changed.
+- **The README's test count is checked.** It said 189 tests while the suite ran 241. A test
+  now compares it with the runner's own count, so adding or removing a test without
+  updating the README fails CI. No behaviour changed.
 
 ## 1.5.2 - 2026-10-16
 
