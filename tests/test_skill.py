@@ -392,6 +392,63 @@ class TestGrouping(Base):
                          {frozenset(("/wedding-a/", "/wedding-b/"))})
 
 
+class TestPairwiseCandidates(unittest.TestCase):
+    """The near-duplicate and cannibalization checks compare only candidate pairs. The
+    filters must be lossless at the current thresholds: a pair the exhaustive loop would
+    report and the filter drops is a silent false negative, the worst kind for a tool
+    whose findings have to be trusted."""
+
+    def _sig_pages(self, seed=11):
+        import random
+        rnd = random.Random(seed)
+        pages = []
+        for _ in range(12):                       # 12 clusters of 25 around a base
+            base = [rnd.getrandbits(61) for _ in range(S.MINHASH_N)]
+            for _ in range(25):
+                sig = list(base)
+                for pos in rnd.sample(range(S.MINHASH_N), rnd.randint(0, 30)):
+                    sig[pos] = rnd.getrandbits(61)
+                pages.append({"minhash": sig, "word_count": 400})
+        return pages
+
+    def test_near_duplicate_candidates_include_every_pair_at_the_threshold(self):
+        pages = self._sig_pages()
+        cand = set(audit.near_dup_candidates(pages))
+        hits = 0
+        for i in range(len(pages)):
+            for j in range(i + 1, len(pages)):
+                sim = S.minhash_similarity(pages[i]["minhash"], pages[j]["minhash"])
+                if sim >= audit.NEAR_DUP:
+                    hits += 1
+                    self.assertIn((i, j), cand, "pair at {0:.3f} not compared".format(sim))
+        self.assertGreater(hits, 100, "fixture must put pairs on both sides of 0.80")
+
+    def test_worst_case_near_duplicate_is_a_candidate(self):
+        """12 differing values, one in each of the first 12 bands: the most a pair at
+        0.80 can differ. Only the last four bands still match."""
+        a = list(range(S.MINHASH_N))
+        b = list(a)
+        r = S.MINHASH_N // audit.BANDS
+        for band in range(12):
+            b[band * r] = -1
+        self.assertGreaterEqual(S.minhash_similarity(a, b), audit.NEAR_DUP)
+        pages = [{"minhash": a, "word_count": 400}, {"minhash": b, "word_count": 400}]
+        self.assertEqual(audit.near_dup_candidates(pages), [(0, 1)])
+
+    def test_unrelated_pages_are_not_candidates(self):
+        """The point of the filter: 300 unrelated pages give no candidates."""
+        import random
+        rnd = random.Random(5)
+        pages = [{"minhash": [rnd.getrandbits(61) for _ in range(S.MINHASH_N)],
+                  "word_count": 400} for _ in range(300)]
+        self.assertEqual(audit.near_dup_candidates(pages), [])
+
+    def test_short_pages_are_not_candidates(self):
+        sig = list(range(S.MINHASH_N))
+        pages = [{"minhash": sig, "word_count": 400}, {"minhash": sig, "word_count": 49}]
+        self.assertEqual(audit.near_dup_candidates(pages), [])
+
+
 # --------------------------------------------------------------- thresholds
 
 class TestThresholds(Base):

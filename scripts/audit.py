@@ -11,8 +11,10 @@ import argparse
 import datetime
 import itertools
 import json
+import math
 import re
 from collections import defaultdict
+from fractions import Fraction
 from urllib.parse import urlsplit
 
 import seolib as S
@@ -24,6 +26,14 @@ TITLE_FLAG = 65          # target is 50-60; only flag past the point Google actu
 DESC_MIN, DESC_MAX = 70, 160
 THIN_WORDS = 250
 NEAR_DUP = 0.80          # minhash Jaccard estimate
+# Near-duplicate candidates: the 64 minhash values in BANDS bands. A pair at NEAR_DUP
+# differs in at most MINHASH_N - ceil(NEAR_DUP * MINHASH_N) values (12), and that many
+# differences cannot break more than 12 bands, so with 16 one band always matches and
+# every pair at the threshold is compared. NEAR_DUP at 0.75 or lower breaks this:
+# the assert below stops the import rather than let pairs go silently unchecked.
+BANDS = 16
+assert S.MINHASH_N % BANDS == 0 and \
+    BANDS > S.MINHASH_N - math.ceil(Fraction(str(NEAR_DUP)) * S.MINHASH_N)
 CANNIBAL_TERMS = 0.60
 IMG_HEAVY_BYTES = 200 * 1024
 MAX_DEPTH = 3
@@ -53,6 +63,31 @@ def top_terms(text, n=15):
     for w in words:
         freq[w] += 1
     return {w for w, _ in sorted(freq.items(), key=lambda kv: -kv[1])[:n]}
+
+
+def _bucket_pairs(buckets):
+    """Index pairs (i < j) that share any bucket, sorted so findings keep the order
+    of the exhaustive loop."""
+    pairs = set()
+    for idx in buckets.values():
+        for x, i in enumerate(idx):
+            for j in idx[x + 1:]:
+                pairs.add((i, j))
+    return sorted(pairs)
+
+
+def near_dup_candidates(pages):
+    """Pairs of pages that share at least one whole band of minhash values. Every pair
+    at or above NEAR_DUP is among them (see BANDS)."""
+    r = S.MINHASH_N // BANDS
+    buckets = defaultdict(list)
+    for i, p in enumerate(pages):
+        sig = p.get("minhash")
+        if p["word_count"] < 50 or not sig or len(sig) != S.MINHASH_N:
+            continue
+        for band in range(BANDS):
+            buckets[(band, tuple(sig[band * r:(band + 1) * r]))].append(i)
+    return _bucket_pairs(buckets)
 
 
 UTILITY_RE = re.compile(r"/(404|403|500|offline|thank-?you|thanks)(\.html?)?/?$", re.I)
@@ -644,20 +679,18 @@ def audit(doc, vitals=None, schema_findings=None):
                                sorted(urls), evidence="identical text fingerprint " + fp[:12],
                                recipe="consolidate-pages"))
     seen_pairs = {frozenset(u) for u in by_fp.values() if len(u) > 1} | alt_pairs
-    for i, a in enumerate(live):
-        for b in live[i + 1:]:
-            if frozenset((a["url"], b["url"])) in seen_pairs:
-                continue
-            if a["word_count"] < 50 or b["word_count"] < 50:
-                continue
-            sim = S.minhash_similarity(a.get("minhash"), b.get("minhash"))
-            if sim >= NEAR_DUP:
-                seen_pairs.add(frozenset((a["url"], b["url"])))
-                out.append(finding("S3-NEAR-DUPLICATE", 3, "high",
-                                   "Pages are {0}% similar in main content.".format(int(sim * 100)),
-                                   [a["url"], b["url"]],
-                                   evidence="estimated Jaccard {0:.2f}".format(sim),
-                                   recipe="consolidate-pages", confidence="medium"))
+    for i, j in near_dup_candidates(live):
+        a, b = live[i], live[j]
+        if frozenset((a["url"], b["url"])) in seen_pairs:
+            continue
+        sim = S.minhash_similarity(a.get("minhash"), b.get("minhash"))
+        if sim >= NEAR_DUP:
+            seen_pairs.add(frozenset((a["url"], b["url"])))
+            out.append(finding("S3-NEAR-DUPLICATE", 3, "high",
+                               "Pages are {0}% similar in main content.".format(int(sim * 100)),
+                               [a["url"], b["url"]],
+                               evidence="estimated Jaccard {0:.2f}".format(sim),
+                               recipe="consolidate-pages", confidence="medium"))
 
     # cannibalization: same intent signals on two pages
     sigs = {}
