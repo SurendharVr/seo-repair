@@ -1,5 +1,5 @@
 name: sitemend SEO regression check
-description: Fails a pull request that breaks crawling or indexing. Audits the PR and its base branch (or a preview deploy and production) and reports only what the change broke, citing the page and string.
+description: Fails a pull request that breaks crawling or indexing, comparing it with its base branch and citing the evidence.
 author: SurendharVr
 branding:
   icon: search

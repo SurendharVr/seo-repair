@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1 - 2026-10-16
+
+- **The Action can be published to GitHub Marketplace.** Its description was 193
+  characters, and Marketplace refuses anything from 125 up, so 1.5.0 could not be listed.
+  It is now 113 characters, and a test keeps it under the limit. No behaviour changed;
+  the examples pin `@v1.5.1`.
+
 ## 1.5.0 - 2026-10-16
 
 - **Judgement calls never fail a pull request.** Findings `audit.py` marks below high
