@@ -1,0 +1,2 @@
+# Benchmark tooling and data stay in the repo, never in the published sdist.
+prune bench

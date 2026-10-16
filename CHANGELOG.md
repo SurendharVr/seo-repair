@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Pre-registration for the replay benchmark.** `bench/PREREGISTRATION.md` fixes the
+  frozen version (1.6.0, `badbb38`) and leaves the repo list, commit range and pass/fail
+  thresholds blank, to be filled in and signed off before any replay runs on real data.
+  `MANIFEST.in` keeps `bench/` out of the sdist. No behaviour changed.
+
 ## 1.6.0 - 2026-10-17
 
 The example workflows and README pin `@v1.6.0`. This is the first release under the stability
