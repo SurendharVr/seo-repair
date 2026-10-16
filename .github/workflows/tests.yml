@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt pyyaml
       - name: Unit tests
         run: python tests/test_skill.py
       - name: End-to-end against the demo site
@@ -110,3 +110,18 @@ jobs:
           # timeouts, then 22s). A real hang still fails, with the reason.
           SITEMEND_RENDER_TIMEOUT: "90"
         run: python -m unittest tests.test_skill.TestRenderCrawl -v
+
+  action:
+    # Runs action.yml for real, the way a user's workflow does: it checks out this PR
+    # and its base branch, audits the demo site in both and compares them. It passes
+    # unless the PR changes what the demo site reports.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          site-dir: examples/demo-site
+          comment: "false"

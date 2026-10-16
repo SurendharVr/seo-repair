@@ -2864,5 +2864,61 @@ class TestExtraHeaders(unittest.TestCase):
                 os.environ["SITEMEND_HTTP_HEADERS"] = old
 
 
+class TestGithubAction(unittest.TestCase):
+    """action.yml is the product's front door. CI's `action` job runs it for real on every
+    pull request; these tests catch the cheap mistakes first, on every platform."""
+
+    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+
+    def _action(self):
+        try:
+            import yaml
+        except ImportError:
+            raise unittest.SkipTest("pyyaml not installed")
+        with open(os.path.join(self.ROOT, "action.yml"), encoding="utf-8") as fh:
+            return yaml.safe_load(fh)
+
+    def test_the_metadata_parses_and_every_used_input_is_declared(self):
+        import re
+        a = self._action()
+        self.assertEqual(a["runs"]["using"], "composite")
+        with open(os.path.join(self.ROOT, "action.yml"), encoding="utf-8") as fh:
+            used = set(re.findall(r"inputs\.([a-z-]+)", fh.read()))
+        self.assertLessEqual(used, set(a["inputs"]))
+
+    def test_the_audit_step_runs_check_on_the_folders_it_checked_out(self):
+        """Run the action's own shell step with bash against two prepared folders, the
+        way the runner would after checkout and build."""
+        if not shutil.which("bash"):
+            raise unittest.SkipTest("bash not available")
+        step = next(s for s in self._action()["runs"]["steps"] if s.get("id") == "check")
+        work = tempfile.mkdtemp(prefix="sitemend-action-")
+        self.addCleanup(shutil.rmtree, work, True)
+        for side, broken in (("head", True), ("base", False)):
+            link = '<a href="/gone/">x</a> ' if broken else ""
+            full = os.path.join(work, "_sitemend", side, "out", "index.html")
+            os.makedirs(os.path.dirname(full))
+            with open(full, "w", encoding="utf-8") as fh:
+                fh.write(page_html(body="<h1>H</h1><p>" + link + "word " * 300 + "</p>"))
+        shim = os.path.join(work, "bin")
+        os.makedirs(shim)
+        with open(os.path.join(shim, "sitemend"), "w", newline="\n") as fh:
+            fh.write('#!/bin/sh\nexec "{0}" "{1}" "$@"\n'.format(
+                sys.executable.replace("\\", "/"),
+                os.path.join(sitemend.HERE, "sitemend.py").replace("\\", "/")))
+        os.chmod(os.path.join(shim, "sitemend"), 0o755)
+        gh_out = os.path.join(work, "gh_output")
+        env = dict(os.environ, SITE_DIR="out", URL="", BASELINE_URL="", FAIL_ON="",
+                   MAX_PAGES="200", SITEMEND_HTTP_HEADERS="", GITHUB_OUTPUT=gh_out,
+                   PATH=shim + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8")
+        script = os.path.join(work, "step.sh")
+        with open(script, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(step["run"])
+        subprocess.run(["bash", script], cwd=work, env=env, capture_output=True, check=True)
+        with open(gh_out, encoding="utf-8") as fh:
+            self.assertEqual(fh.read().split(), ["code=1", "result=fail"])
+        self.assertTrue(os.path.isfile(os.path.join(work, "_sitemend", "out", "verify.md")))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

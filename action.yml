@@ -1,0 +1,148 @@
+name: sitemend SEO regression check
+description: Fails a pull request that breaks crawling or indexing. Audits the PR and its base branch (or a preview deploy and production) and reports only what the change broke, citing the page and string.
+author: SurendharVr
+branding:
+  icon: search
+  color: green
+
+inputs:
+  site-dir:
+    description: Folder of built HTML to audit, relative to the repository root, such as out for a Next.js static export or dist for Astro. Ignored when url is set.
+    default: "."
+  build-command:
+    description: Shell command that builds the site, such as "npm ci && npm run build". It runs in the PR checkout and again in the base-branch checkout. Leave it empty for a site that is already HTML. Set up the toolchain (actions/setup-node and so on) in an earlier step.
+    default: ""
+  url:
+    description: Audit this URL instead of a folder, typically the pull request's preview deploy. Pair it with baseline-url.
+    default: ""
+  baseline-url:
+    description: The URL that url is compared with, typically production. Without it, url is audited on its own and fails only on fail-on.
+    default: ""
+  http-headers:
+    description: 'Extra request headers for url mode, one "Name: value" per line, such as a Vercel protection-bypass secret. Pass secrets through the secrets context so they are masked.'
+    default: ""
+  fail-on:
+    description: Also fail while any measured finding at this severity or worse is open, including ones the base already had (critical, high or medium). With nothing to compare with, it defaults to critical.
+    default: ""
+  max-pages:
+    description: The most pages to crawl on each side in url mode.
+    default: "200"
+  comment:
+    description: Post the result as one pull-request comment and update it on every run.
+    default: "true"
+  github-token:
+    description: Token used for the comment. It needs pull-requests write.
+    default: ${{ github.token }}
+  python-version:
+    description: Python used to run sitemend.
+    default: "3.12"
+
+outputs:
+  result:
+    description: pass or fail.
+    value: ${{ steps.check.outputs.result }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # The action's own code at the tag the workflow names, so @v1.5.0 runs exactly 1.5.0.
+    - name: Install sitemend
+      shell: bash
+      run: python -m pip install --quiet "$GITHUB_ACTION_PATH"
+
+    # Head and base go in their own folders, so neither audit crawls the other.
+    - name: Check out the pull request
+      if: inputs.url == ''
+      uses: actions/checkout@v4
+      with:
+        path: _sitemend/head
+    - name: Check out its base branch
+      if: inputs.url == '' && github.event.pull_request.base.sha != ''
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.base.sha }}
+        path: _sitemend/base
+
+    - name: Build both
+      if: inputs.url == '' && inputs.build-command != ''
+      shell: bash
+      env:
+        BUILD: ${{ inputs.build-command }}
+      run: |
+        set -e
+        (cd _sitemend/head && eval "$BUILD")
+        if [ -d _sitemend/base ]; then (cd _sitemend/base && eval "$BUILD"); fi
+
+    - name: Audit and compare
+      id: check
+      shell: bash
+      env:
+        SITE_DIR: ${{ inputs.site-dir }}
+        URL: ${{ inputs.url }}
+        BASELINE_URL: ${{ inputs.baseline-url }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MAX_PAGES: ${{ inputs.max-pages }}
+        SITEMEND_HTTP_HEADERS: ${{ inputs.http-headers }}
+      run: |
+        set +e
+        args=(--out _sitemend/out --max-pages "$MAX_PAGES")
+        if [ -n "$FAIL_ON" ]; then args+=(--fail-on "$FAIL_ON"); fi
+        if [ -n "$URL" ]; then
+          if [ -n "$BASELINE_URL" ]; then args+=(--base "$BASELINE_URL"); fi
+          sitemend check "$URL" "${args[@]}"
+        else
+          if [ -d _sitemend/base ]; then args+=(--base "_sitemend/base/$SITE_DIR"); fi
+          sitemend check "_sitemend/head/$SITE_DIR" "${args[@]}"
+        fi
+        code=$?
+        echo "code=$code" >> "$GITHUB_OUTPUT"
+        if [ "$code" -eq 0 ]; then echo "result=pass"; else echo "result=fail"; fi >> "$GITHUB_OUTPUT"
+
+    # Runs when the check failed too. A PR from a fork gets a read-only token, so the
+    # comment is skipped there and the check result and report still stand.
+    - name: Comment on the pull request
+      if: always() && inputs.comment == 'true'
+      continue-on-error: true
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const path = '_sitemend/out/verify.md';
+          if (!fs.existsSync(path)) { core.info('No comparison was made; no comment.'); return; }
+          const body = fs.readFileSync(path, 'utf8');
+          const marker = body.split('\n')[0];
+          const { owner, repo } = context.repo;
+          let pr = context.payload.pull_request && context.payload.pull_request.number;
+          if (!pr) {
+            // deployment_status runs (a preview deploy) carry a commit, not a PR.
+            const sha = (context.payload.deployment && context.payload.deployment.sha) || context.sha;
+            const res = await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: sha });
+            pr = res.data.length ? res.data[0].number : null;
+          }
+          if (!pr) { core.info('No pull request for this commit; no comment.'); return; }
+          const issue = { owner, repo, issue_number: pr };
+          const comments = await github.paginate(github.rest.issues.listComments, issue);
+          // Only a bot's own earlier comment is updated, never one a person wrote.
+          const mine = comments.find(c => c.body && c.body.startsWith(marker) && c.user && c.user.type === 'Bot');
+          if (mine) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+          } else {
+            await github.rest.issues.createComment({ ...issue, body });
+          }
+
+    - name: Upload the report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: sitemend-report
+        path: _sitemend/out/
+
+    - name: Fail when the check failed
+      if: steps.check.outputs.code != '0'
+      shell: bash
+      run: exit 1
