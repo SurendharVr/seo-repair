@@ -1,5 +1,5 @@
-# Authored on Windows; normalise so contributors on other platforms don't see
-# whole-file diffs from line endings alone.
+# Authored on Windows; normalise line endings so contributors on other platforms don't
+# see whole-file diffs from line endings alone. Images are binary: never normalised.
 * text=auto eol=lf
 *.png binary
 *.jpg binary
