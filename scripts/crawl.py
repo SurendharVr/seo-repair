@@ -17,7 +17,8 @@ import re
 import secrets
 import sys
 from collections import deque
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin
+from seolib import urlsplit  # tolerant of malformed URLs (#51)
 
 from bs4 import BeautifulSoup
 

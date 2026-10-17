@@ -844,6 +844,34 @@ class TestSchemaReferences(unittest.TestCase):
         self.assertTrue(self._required(known))
 
 
+class TestBracketHosts(Base):
+    """REGRESSION #51: a URL whose host starts with "[" but is not a valid IPv6 literal
+    made urlsplit raise, and the whole audit stopped. The replay benchmark hit it on
+    electron/website, typescript-eslint and react-navigation, all in minified JS/CSS."""
+
+    def test_resolve_href_does_not_raise(self):
+        for href in ("http://[", "https://[::1", "//[x", "http://[x/page"):
+            with self.subTest(href=href):
+                self.assertEqual(S.resolve_href("/", href), ("invalid", href))
+
+    def test_audit_survives_a_bracket_host_anywhere(self):
+        bad = "https://[x/page"
+        for name, head, body, files in (
+                ("css", '<link rel="stylesheet" href="/style.css">', "", {"style.css": "a{background:url(http://[x)}"}),
+                ("link", "", '<a href="{0}">x</a>'.format(bad), {}),
+                ("hreflang", '<link rel="alternate" hreflang="de" href="{0}">'.format(bad), "", {}),
+                ("canonical", '<link rel="canonical" href="{0}">'.format(bad), "", {}),
+                ("sitemap", "", "", {"sitemap.xml": '<urlset><url><loc>{0}</loc></url></urlset>'.format(bad),
+                                     "robots.txt": "User-agent: *\nSitemap: https://[x/sitemap.xml\n"})):
+            with self.subTest(source=name):
+                fx = Fixture()
+                self.addCleanup(fx.cleanup)
+                fx.write("index.html", page_html(head_extra=head, body="<h1>H</h1><p>" + body + "word " * 300 + "</p>"))
+                for rel, text in files.items():
+                    fx.write(rel, text)
+                self.assertIsInstance(fx.ids(), list)
+
+
 class TestSchemaClaims(unittest.TestCase):
     REVIEW = {"@type": "LocalBusiness", "name": "X", "address": "Some Street",
               "review": [{"@type": "Review",
@@ -881,6 +909,27 @@ class TestSchemaClaims(unittest.TestCase):
 
     def test_initial_only_tokens_are_ignored(self):
         self.assertFalse(self._review_by("Varsha B.", "Varsha said it was lovely. Some Street"))
+
+    def _rating(self, page_text, elsewhere=""):
+        product = {"@type": "Product", "name": "Widget",
+                   "aggregateRating": {"@type": "AggregateRating", "ratingValue": "4.7",
+                                       "reviewCount": "86413"}}
+        page = {"url": "/", "jsonld": [product], "jsonld_errors": [],
+                "claim_text": S.claim_norm(page_text), "visible_text": page_text.casefold()}
+        site = page_text + " " + elsewhere
+        f, _ = schema_check.check_page(page, S.claim_norm(site),
+                                       site_numbers=schema_check.numbers(site.casefold()))
+        return [x for x in f if x["id"] == "S5-SCHEMA-UNSUPPORTED-CLAIM"]
+
+    def test_a_rating_is_not_corroborated_by_stray_digits(self):
+        """REGRESSION found by the seeded recall run (2026-10-17): ratingValue "4.7" was
+        split into "4" and "7", which every site contains, so a rating the site never
+        shows passed as corroborated."""
+        self.assertTrue(self._rating("Widget docs.", "Version 4 ships in 7 days. Step 47."))
+
+    def test_a_rating_the_site_shows_is_corroborated(self):
+        self.assertEqual(self._rating("Rated 4.7 by 86413 customers."), [])
+        self.assertEqual(self._rating("Widget docs.", "Our widget is rated 4.7 from 86413 reviews."), [])
 
     def test_visible_review_not_flagged(self):
         self.assertEqual(self._check("Jane Doe said: Great service. Some Street"), [])

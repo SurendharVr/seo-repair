@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **An audit no longer crashes on a malformed URL (#51).** A URL whose host starts with
+  `[` but is not a valid IPv6 literal (`http://[x`, common in minified CSS and JS) made
+  `urlsplit` raise and stopped the whole audit. The replay benchmark hit it on
+  electron/website, typescript-eslint and react-navigation. Such a URL is now treated as
+  unresolvable: not a page of the site, and an hreflang alternate that names one is
+  reported as broken, as any unresolvable alternate is.
+- **`S5-SCHEMA-UNSUPPORTED-CLAIM` no longer corroborates a decimal from stray digits.** A
+  rating of `"4.7"` was split into `4` and `7`, which every site contains, so a rating the
+  site never shows passed. Decimal and grouped numbers now stay whole and must appear as
+  that number in the page's visible text. Found by the seeded recall test. This changes
+  which findings are emitted, so it ships in a minor release.
 - **Seeded recall harness fixes.** A repository whose build fails is now recorded as
   `build_failed` with its own column in `recall.md`, not as a sitemend tool failure, which
   Addendum 1 reserves for audits sitemend cannot complete. Mutations no longer target

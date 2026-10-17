@@ -129,7 +129,7 @@ def name_on_page(name, visible):
     return all(t in present for t in tokens)
 
 
-def check_page(page, site_text_norm="", known_ids=None):
+def check_page(page, site_text_norm="", known_ids=None, site_numbers=None):
     """Return a list of schema findings for one crawled page.
 
     Claim corroboration needs the page's visible text. When that is unavailable the
@@ -211,18 +211,19 @@ def check_page(page, site_text_norm="", known_ids=None):
                 toks = claim_tokens(node[claim])
                 if not toks:
                     continue
-                on_page = coverage(toks, page_text_norm)
+                on_page = coverage(toks, page_text_norm, numbers(visible))
                 if on_page >= 0.7:
                     continue
-                on_site = coverage(toks, site_text_norm)
+                on_site = coverage(toks, site_text_norm, site_numbers)
 
                 # Common words inflate coverage: a fabricated review still scores ~50%
                 # on words like "order" and "short". The identifying terms -- proper
                 # nouns and numbers -- are what actually corroborate a claim, so judge
                 # on those when the claim has any.
-                dist = [t for t in toks if t[:1].isupper() or t.isdigit()]
-                dist_site = coverage(dist, site_text_norm) if dist else 1.0
-                missing = [t for t in (dist or toks) if norm(t) not in site_text_norm][:5]
+                dist = [t for t in toks if t[:1].isupper() or t[:1].isdigit()]
+                dist_site = coverage(dist, site_text_norm, site_numbers) if dist else 1.0
+                missing = [t for t in (dist or toks)
+                           if not coverage([t], site_text_norm, site_numbers)][:5]
 
                 if on_site < 0.4 or (dist and dist_site < 0.34):
                     findings.append({
@@ -245,12 +246,14 @@ def check_page(page, site_text_norm="", known_ids=None):
 
 
 def claim_tokens(value):
-    """Significant tokens from a claim value: words of 3+ chars and any number."""
+    """Significant tokens from a claim value: words of 3+ chars and any number. A decimal
+    or grouped number ("4.7", "86,413") stays one token: split into "4" and "7", it was
+    corroborated by the digits every site contains."""
     out = []
     for v in flatten_strings(value):
         if v.lower() in ("true", "false"):
             continue
-        for tok in re.findall(r"[A-Za-z]{3,}|\d+", v):
+        for tok in re.findall(r"[A-Za-z]{3,}|\d+(?:[.,]\d+)*", v):
             if tok.lower() not in ("the", "and", "for", "with", "http", "https", "www", "com"):
                 out.append(tok)
     seen, uniq = set(), []
@@ -261,11 +264,28 @@ def claim_tokens(value):
     return uniq
 
 
-def coverage(tokens, text_norm):
-    """Fraction of claim tokens present in the normalized text."""
+DECIMAL = re.compile(r"\d+(?:[.,]\d+)+")
+
+
+def numbers(text):
+    """Every number in text, whole, with ',' read as '.'."""
+    return {m.replace(",", ".") for m in re.findall(r"\d+(?:[.,]\d+)*", text or "")}
+
+
+def coverage(tokens, text_norm, nums=None):
+    """Fraction of claim tokens present in the text. A decimal must appear as that whole
+    number (nums, from the visible text); the squashed text_norm would find "4.7" as "47"
+    inside any longer number. Without nums, every token is matched in text_norm."""
+    # ponytail: integers still match as substrings of text_norm, so a short one ("5")
+    # corroborates itself; match them against nums too if that shows up in recall.
     if not tokens:
         return 1.0
-    return sum(1 for t in tokens if norm(t) in text_norm) / len(tokens)
+
+    def hit(t):
+        if nums is not None and DECIMAL.fullmatch(t):
+            return t.replace(",", ".") in nums
+        return norm(t) in text_norm
+    return sum(1 for t in tokens if hit(t)) / len(tokens)
 
 
 def main():
@@ -306,6 +326,8 @@ def main():
 
     site_text_norm = "".join(
         (p.get("claim_text") or norm(p.get("_text") or "")) for p in doc["pages"])
+    site_numbers = set().union(*(numbers(p.get("visible_text") or p.get("_text") or "")
+                                 for p in doc["pages"]))
 
     uncorroborated = [p["url"] for p in doc["pages"]
                       if not (p.get("claim_text") or p.get("_text"))]
@@ -313,7 +335,7 @@ def main():
     # Pass 2: validate, scoring each claim against this page and against the whole site.
     known_ids = known_props(doc["pages"])
     for p in doc["pages"]:
-        f, types = check_page(p, site_text_norm, known_ids)
+        f, types = check_page(p, site_text_norm, known_ids, site_numbers)
         all_findings.extend(f)
         by_page[p["url"]] = types
 
