@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Seeded-regression recall for the benchmark.** `bench/seeded/seeded.py` builds each of
+  the first 5 pre-registered repositories once, applies 10 known regressions one at a time
+  to a copy of the built output (canonical removed, noindex added, canonical and sitemap on
+  a preview host, `Disallow: /`, a linked page deleted, title removed, one-way hreflang,
+  duplicate title, unsupported rating markup), each declaring the rule it must trigger,
+  and checks the gate against the unmutated build. An unmutated control must pass. Writes
+  `results.csv` and a recall table by mutation type; the manual `seeded` workflow runs it
+  on Ubuntu. No behaviour changed.
 - **Evidence ledger and summary for the benchmark.** `bench/verify_helper.py` adds one
   `bench/ledger.csv` row per blocking finding from the replay and prints its evidence (the
   finding, how each page's crawl record changed from base to head, robots.txt and sitemap

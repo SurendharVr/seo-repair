@@ -3484,5 +3484,78 @@ class TestEvidenceLedger(unittest.TestCase):
         self.assertIn("| Audit | 4 | 5.0 | 8.0 |", md)
 
 
+class TestSeededRecall(unittest.TestCase):
+    """bench/seeded/seeded.py builds a repository once, applies each known regression to a
+    copy of the built output and checks the gate catches it: recall needs ground truth,
+    which replay cannot give. An unmutated copy must pass, or the harness is the problem."""
+
+    SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bench", "seeded", "seeded.py")
+    HOST = "https://docs.acme-widgets.com"
+
+    def setUp(self):
+        if not os.path.isfile(self.SCRIPT):
+            raise unittest.SkipTest("bench/ is not shipped in the sdist")
+        if not shutil.which("git"):
+            raise unittest.SkipTest("git not available")
+        self.d = tempfile.mkdtemp(prefix="sitemend-seeded-")
+        self.addCleanup(shutil.rmtree, self.d, True)
+
+    def _site_repo(self):
+        """A clean four-page site every mutation applies to: absolute canonicals, a sitemap
+        robots.txt names, unique titles, and every page linking to every other."""
+        src = os.path.join(self.d, "src-site")
+        pages = {"/": "index.html", "/a.html": "a.html", "/b.html": "b.html", "/c.html": "c.html"}
+        nav = " ".join('<a href="{0}">{1}</a>'.format(u, f) for u, f in pages.items())
+        files = {"build.py": TestReplay.BUILD,
+                 "src/robots.txt": "User-agent: *\nAllow: /\nSitemap: {0}/sitemap.xml\n".format(self.HOST),
+                 "src/sitemap.xml": '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                                    + "".join("<url><loc>{0}{1}</loc></url>".format(self.HOST, u) for u in pages)
+                                    + "</urlset>"}
+        for i, (u, f) in enumerate(pages.items()):
+            files["src/" + f] = page_html(
+                title="Widget Handbook Chapter Number {0} Overview".format(i),
+                desc="Chapter {0} of the widget handbook, covering setup, tuning and the care of "
+                     "widgets in production.".format(i),
+                head_extra='<link rel="canonical" href="{0}{1}">'.format(self.HOST, u),
+                body="<h1>Chapter {0}</h1><p>{1} ".format(i, nav) + "widget " * 300 + "</p>")
+        os.makedirs(src)
+        env = dict(os.environ, GIT_AUTHOR_DATE="2026-01-01T12:00:00+00:00",
+                   GIT_COMMITTER_DATE="2026-01-01T12:00:00+00:00", GIT_AUTHOR_NAME="t",
+                   GIT_AUTHOR_EMAIL="t@example.test", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.test")
+        for rel, text in files.items():
+            full = os.path.join(src, rel)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
+        for args in (["init", "-q", "-b", "main"], ["config", "commit.gpgsign", "false"],
+                     ["add", "-A"], ["commit", "-q", "-m", "site"]):
+            subprocess.run(["git"] + args, cwd=src, check=True, capture_output=True, env=env)
+        return src
+
+    def test_every_mutation_is_caught_and_the_unmutated_control_passes(self):
+        import csv
+        cfg = os.path.join(self.d, "repos.json")
+        with open(cfg, "w", encoding="utf-8") as fh:
+            json.dump([{"repo": "t/site", "url": self._site_repo(), "ref_cutoff": "2026-02-01T00:00:00Z",
+                        "commits": 50, "site_dir": "out", "node_version": "24",
+                        "build_command": '"{0}" build.py'.format(sys.executable)}], fh)
+        results = os.path.join(self.d, "results.csv")
+        r = subprocess.run([sys.executable, self.SCRIPT, "--config", cfg, "--work", os.path.join(self.d, "work"),
+                            "--out", os.path.join(self.d, "out"), "--results", results,
+                            "--scripts", sitemend.HERE], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+        self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-3000:])
+        with open(results, encoding="utf-8", newline="") as fh:
+            rows = {x["mutation"]: x for x in csv.DictReader(fh)}
+        self.assertEqual(rows.pop("control")["gate_failed"], "n")
+        self.assertEqual(len(rows), 10)
+        missed = {m: (x["expected_rule"], x["fired"], x["target"]) for m, x in rows.items() if x["fired"] != "y"}
+        self.assertEqual(missed, {})
+        # The medium one fires but, by design, does not fail the gate.
+        self.assertEqual({m for m, x in rows.items() if x["gate_failed"] == "n"}, {"canonical-removed"})
+        with open(os.path.join(self.d, "recall.md"), encoding="utf-8") as fh:
+            self.assertIn("**Recall, critical and high mutation types: 9 of 9 (100.0%)**", fh.read())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

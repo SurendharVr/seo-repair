@@ -25,6 +25,8 @@ dashboard.html
 # Replay benchmark: clones and per-commit audits (full site text). results.csv is tracked.
 bench/replay/work/
 bench/replay/out/
+bench/seeded/work/
+bench/seeded/out/
 
 # Editors / OS
 .DS_Store
