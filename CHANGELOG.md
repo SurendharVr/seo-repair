@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Replay pilot on 1.7.0, and one ledger row per blocking finding.** The 2-repository
+  pilot re-ran on the frozen 1.7.0 (`bench/replay/pilot-1.7.0/`): all 42 commits built and
+  were audited, 40 comparisons, one electron/website commit failed the gate with 14 blocking
+  findings (7 `S1-BROKEN-LINK`, 7 `S1-HREFLANG-BROKEN`, all language versions of a new page),
+  which now await a verdict in `bench/ledger.csv`. `verify_helper.py` keyed ledger rows by
+  rule and page, so those 14 became 2; the key now includes the evidence. `bench/summary.md`
+  is regenerated from the 1.7.0 pilot. No behaviour changed.
 - **Seeded recall: the duplicate-title mutation only adds a duplicate.** The page given a
   copied title must now have a unique title itself. In the 1.7.0 seeded run it twice
   landed on a page already in a duplicate group, so the mutation ended one pair while

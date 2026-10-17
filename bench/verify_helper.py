@@ -27,6 +27,12 @@ PAGE_FIELDS = ["status", "title", "meta_description", "canonical", "robots_meta"
                "jsonld_errors", "word_count", "og"]
 
 
+def key(row):
+    """One ledger row per blocking finding. The same rule on the same page with different
+    evidence (seven broken language links) is seven findings, and precision counts them."""
+    return row["repo"], row["head_sha"], row["rule_id"], row["url"], row["evidence_excerpt"]
+
+
 def load(path):
     with open(path, encoding="utf-8") as fh:
         return json.load(fh)
@@ -81,7 +87,7 @@ def main(argv=None):
     if os.path.exists(args.ledger):
         with open(args.ledger, encoding="utf-8", newline="") as fh:
             ledger = list(csv.DictReader(fh))
-    known = {(r["repo"], r["head_sha"], r["rule_id"], r["url"]) for r in ledger}
+    known = {key(r) for r in ledger}
 
     with open(args.results, encoding="utf-8", newline="") as fh:
         failed = [r for r in csv.DictReader(fh) if r["gate_result"] == "fail"]
@@ -96,12 +102,12 @@ def main(argv=None):
             row = {"repo": r["repo"], "head_sha": r["head_sha"], "rule_id": f["id"],
                    "severity": f["severity"], "url": " ".join(f.get("pages", [])),
                    "evidence_excerpt": " ".join(str(f.get("evidence") or "").split())[:200]}
-            k = (row["repo"], row["head_sha"], row["rule_id"], row["url"])
+            k = key(row)
             if k not in known:
                 ledger.append(dict({x: "" for x in FIELDS}, **row))
                 known.add(k)
                 added += 1
-            if not next(x for x in ledger if (x["repo"], x["head_sha"], x["rule_id"], x["url"]) == k)["verdict"]:
+            if not next(x for x in ledger if key(x) == k)["verdict"]:
                 shown += evidence(row, f, base, head, r["base_sha"])
 
     with open(args.ledger, "w", encoding="utf-8", newline="") as fh:
