@@ -27,7 +27,7 @@ jobs:
           node-version: 20
 
       # Pinned, so a new release never changes what fails your build without a PR.
-      - uses: SurendharVr/sitemend@v1.6.0
+      - uses: SurendharVr/sitemend@v1.7.0
         with:
           # Pick your framework's row from the README's "Build recipes" table. These two
           # lines are Next.js with `output: 'export'` in next.config.js.
