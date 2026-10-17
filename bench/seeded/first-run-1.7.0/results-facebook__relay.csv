@@ -1,0 +1,12 @@
+repo,mutation,expected_rule,expected_severity,target,fired,gate_failed
+facebook/relay,control,,,,,n
+facebook/relay,canonical-removed,S1-CANONICAL-MISSING,medium,/blog/,y,n
+facebook/relay,noindex-added,S1-INDEX-CONTRADICTION,critical,/blog/,y,y
+facebook/relay,canonical-preview-host,S1-CANONICAL-OFFSITE,critical,/blog/,y,y
+facebook/relay,sitemap-preview-host,S1-HOST-MISMATCH,critical,/sitemap.xml,y,y
+facebook/relay,robots-disallow-all,S1-INDEX-CONTRADICTION,critical,/robots.txt,y,y
+facebook/relay,linked-page-deleted,S1-BROKEN-LINK,high,/blog/,y,y
+facebook/relay,title-removed,S3-TITLE-MISSING,critical,/blog/,y,y
+facebook/relay,hreflang-no-return,S1-HREFLANG-NO-RETURN,high,/graphql/connections.html,y,y
+facebook/relay,title-duplicated,S3-TITLE-DUPLICATE,high,/blog/2021/03/09/introducing-relay-hooks/,y,y
+facebook/relay,rating-unsupported,S5-SCHEMA-UNSUPPORTED-CLAIM,high,/blog/,y,y
