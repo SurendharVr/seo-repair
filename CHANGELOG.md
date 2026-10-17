@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 - 2026-10-17
+
+The example workflows and README pin `@v1.7.0`. A minor release under the stability policy,
+because one rule changes which findings it emits: `S5-SCHEMA-UNSUPPORTED-CLAIM` (decimals
+in a claim, below). The rest are a crash fix (#51) and benchmark tooling outside the package.
 
 - **An audit no longer crashes on a malformed URL (#51).** A URL whose host starts with
   `[` but is not a valid IPv6 literal (`http://[x`, common in minified CSS and JS) made
