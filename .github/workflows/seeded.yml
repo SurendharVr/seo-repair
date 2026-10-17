@@ -1,0 +1,71 @@
+name: seeded
+
+# Task 7 of the evidence plan: seeded-regression recall (bench/seeded/seeded.py), one
+# repository per job on Ubuntu. Manual only: each job builds another project's code.
+# Each job uploads its results-<repo>.csv and audits as an artifact; merge them with
+#   python bench/seeded/seeded.py --report --results results-*.csv
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Comma-separated owner/name list (empty means the first 5 in repos.json)
+        default: ""
+
+# Other projects' build scripts run here, so the token can only read this repository.
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      repos: ${{ steps.list.outputs.repos }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: list
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          args=(--list)
+          if [ -n "$ONLY" ]; then args+=(--only "$ONLY"); fi
+          echo "repos=$(python3 bench/seeded/seeded.py "${args[@]}")" >> "$GITHUB_OUTPUT"
+
+  seeded:
+    needs: plan
+    name: ${{ matrix.repo }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.repos) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node_version }}
+      # The frozen version from bench/PREREGISTRATION.md; the harness refuses any other.
+      - name: Install sitemend
+        run: python -m pip install --quiet "sitemend==1.6.0"
+      - name: Seeded recall
+        env:
+          REPO: ${{ matrix.repo }}
+          SLUG: ${{ matrix.slug }}
+        run: python bench/seeded/seeded.py --only "$REPO" --results "bench/seeded/results-$SLUG.csv"
+      - name: Upload results and audits
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seeded-${{ matrix.slug }}
+          path: |
+            bench/seeded/results-*.csv
+            bench/seeded/out/
+          if-no-files-found: warn

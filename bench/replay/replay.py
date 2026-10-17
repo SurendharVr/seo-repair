@@ -78,22 +78,14 @@ def commits(path, cutoff, n):
     return out.split()[::-1]
 
 
-def build_and_audit(entry, path, sha, outdir, py, scripts, env, timeout):
-    """Build one commit and audit its output, recorded in <outdir>/build.json. A commit
-    that already has one is not built again."""
-    record = os.path.join(outdir, "build.json")
-    if os.path.exists(record):
-        with open(record, encoding="utf-8") as fh:
-            return json.load(fh)
-    os.makedirs(outdir, exist_ok=True)
+def build(entry, path, sha, log_path, env, timeout):
+    """Check out sha and run the build command; returns (built site folder or None, seconds)."""
     git(path, "checkout", "--quiet", "--force", "--detach", sha)
     # Keep installed dependencies between commits, as a CI cache would; remove every other
     # untracked file, above all the previous commit's build output.
     git(path, "clean", "-ffdxq", "-e", "node_modules")
-    rec = {"sha": sha, "status": "ok", "build_seconds": None, "audit_seconds": None,
-           "node": env.get("REPLAY_NODE")}
     start = time.monotonic()
-    with open(os.path.join(outdir, "build.log"), "w", encoding="utf-8", errors="replace") as log:
+    with open(log_path, "w", encoding="utf-8", errors="replace") as log:
         try:
             ok = subprocess.run(entry["build_command"], shell=True, cwd=path, env=env, stdout=log,
                                 stderr=subprocess.STDOUT, timeout=timeout).returncode == 0
@@ -102,18 +94,36 @@ def build_and_audit(entry, path, sha, outdir, py, scripts, env, timeout):
             # checkout still works, but kill stray node processes by hand if it happens.
             log.write("\n[replay] build timed out after {0} s\n".format(timeout))
             ok = False
-    rec["build_seconds"] = round(time.monotonic() - start, 1)
     site = os.path.join(path, entry["site_dir"])
-    if not ok or not os.path.isdir(site):
+    return (site if ok and os.path.isdir(site) else None), round(time.monotonic() - start, 1)
+
+
+def audit(py, scripts, site, outdir, env):
+    """sitemend audit of a built folder into outdir; returns (ok, seconds). Output in audit.log."""
+    start = time.monotonic()
+    r = subprocess.run([py, os.path.join(scripts, "sitemend.py"), "audit", site, "--out", outdir],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    with open(os.path.join(outdir, "audit.log"), "w", encoding="utf-8") as log:
+        log.write(r.stdout + r.stderr)
+    return r.returncode == 0, round(time.monotonic() - start, 1)
+
+
+def build_and_audit(entry, path, sha, outdir, py, scripts, env, timeout):
+    """Build one commit and audit its output, recorded in <outdir>/build.json. A commit
+    that already has one is not built again."""
+    record = os.path.join(outdir, "build.json")
+    if os.path.exists(record):
+        with open(record, encoding="utf-8") as fh:
+            return json.load(fh)
+    os.makedirs(outdir, exist_ok=True)
+    rec = {"sha": sha, "status": "ok", "build_seconds": None, "audit_seconds": None,
+           "node": env.get("REPLAY_NODE")}
+    site, rec["build_seconds"] = build(entry, path, sha, os.path.join(outdir, "build.log"), env, timeout)
+    if site is None:
         rec["status"] = "build_failed"
     else:
-        start = time.monotonic()
-        r = subprocess.run([py, os.path.join(scripts, "sitemend.py"), "audit", site, "--out", outdir],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
-        rec["audit_seconds"] = round(time.monotonic() - start, 1)
-        with open(os.path.join(outdir, "audit.log"), "w", encoding="utf-8") as log:
-            log.write(r.stdout + r.stderr)
-        if r.returncode != 0:
+        ok, rec["audit_seconds"] = audit(py, scripts, site, outdir, env)
+        if not ok:
             rec["status"] = "audit_failed"
     with open(record, "w", encoding="utf-8") as fh:
         json.dump(rec, fh, indent=1)
