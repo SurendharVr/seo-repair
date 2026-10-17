@@ -7,9 +7,9 @@ results **exactly as written**. Changing any value after data exists invalidates
 Fields marked `____` are for B to fill in. Where the plan proposed a value, it is shown
 next to the field for reference only; the accepted value is the one that counts.
 
-**Status:** DRAFT, not signed off. The values in sections 2 to 4 are Claude's suggestions
-from 2026-10-17, for B to accept or change before signing. The replay must not run on real data until this file
-is filled in, signed below, and merged.
+**Status:** signed by SurendharVr on 2026-10-17. The values in sections 2 to 4 were
+suggested by Claude on 2026-10-17 and accepted as written. The replay must not run on
+real data until this file is merged.
 
 ## 1. Frozen version
 
@@ -77,7 +77,7 @@ Excluded tuning sites checked against this list by: Claude, 2026-10-17, against 
 site folders of the October 2026 benchmark run (kept outside the repo) plus the three
 above. None of the 11 sites (electronjs.org, ionicframework.com, trpc.io, vuejs.org,
 unocss.dev, vitest.dev, developers.cloudflare.com, orm.drizzle.team, knip.dev,
-opentelemetry.io, nodejs.org) is on it. Confirmed by B: ____
+opentelemetry.io, nodejs.org) is on it. Confirmed by B: SurendharVr
 
 ## 3. Commit range
 
@@ -125,6 +125,6 @@ Applied to the full run's results as written, with the outcome at the top of the
 
 ## Sign-off
 
-- Filled in and approved by (B): ____
-- Date: ____
+- Filled in and approved by (B): SurendharVr
+- Date: 2026-10-17
 - Merged before any replay run on real data (commit SHA of the merge): ____
