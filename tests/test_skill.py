@@ -3510,7 +3510,10 @@ class TestSeededRecall(unittest.TestCase):
                  "src/robots.txt": "User-agent: *\nAllow: /\nSitemap: {0}/sitemap.xml\n".format(self.HOST),
                  "src/sitemap.xml": '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
                                     + "".join("<url><loc>{0}{1}</loc></url>".format(self.HOST, u) for u in pages)
-                                    + "</urlset>"}
+                                    + "</urlset>",
+                 # An error page that sorts before every content page: never a target.
+                 "src/404.html": page_html(title="Page Not Found On The Widget Handbook Site",
+                                           body="<h1>Not found</h1><p>" + "gone " * 300 + "</p>")}
         for i, (u, f) in enumerate(pages.items()):
             files["src/" + f] = page_html(
                 title="Widget Handbook Chapter Number {0} Overview".format(i),
@@ -3536,9 +3539,11 @@ class TestSeededRecall(unittest.TestCase):
         import csv
         cfg = os.path.join(self.d, "repos.json")
         with open(cfg, "w", encoding="utf-8") as fh:
-            json.dump([{"repo": "t/site", "url": self._site_repo(), "ref_cutoff": "2026-02-01T00:00:00Z",
-                        "commits": 50, "site_dir": "out", "node_version": "24",
-                        "build_command": '"{0}" build.py'.format(sys.executable)}], fh)
+            site = {"url": self._site_repo(), "ref_cutoff": "2026-02-01T00:00:00Z", "commits": 50,
+                    "site_dir": "out", "node_version": "24"}
+            json.dump([dict(site, repo="t/site", build_command='"{0}" build.py'.format(sys.executable)),
+                       dict(site, repo="t/broken",
+                            build_command='"{0}" -c "import sys; sys.exit(1)"'.format(sys.executable))], fh)
         results = os.path.join(self.d, "results.csv")
         r = subprocess.run([sys.executable, self.SCRIPT, "--config", cfg, "--work", os.path.join(self.d, "work"),
                             "--out", os.path.join(self.d, "out"), "--results", results,
@@ -3546,7 +3551,12 @@ class TestSeededRecall(unittest.TestCase):
                            encoding="utf-8", errors="replace", env=dict(os.environ, PYTHONIOENCODING="utf-8"))
         self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-3000:])
         with open(results, encoding="utf-8", newline="") as fh:
-            rows = {x["mutation"]: x for x in csv.DictReader(fh)}
+            all_rows = list(csv.DictReader(fh))
+        # A build that fails is a build failure, never a sitemend tool failure.
+        self.assertEqual({x["fired"] for x in all_rows if x["repo"] == "t/broken" and x["mutation"] != "control"},
+                         {"build_failed"})
+        rows = {x["mutation"]: x for x in all_rows if x["repo"] == "t/site"}
+        self.assertNotIn("/404.html", {x["target"] for x in rows.values()})
         self.assertEqual(rows.pop("control")["gate_failed"], "n")
         self.assertEqual(len(rows), 10)
         missed = {m: (x["expected_rule"], x["fired"], x["target"]) for m, x in rows.items() if x["fired"] != "y"}
@@ -3554,7 +3564,10 @@ class TestSeededRecall(unittest.TestCase):
         # The medium one fires but, by design, does not fail the gate.
         self.assertEqual({m for m, x in rows.items() if x["gate_failed"] == "n"}, {"canonical-removed"})
         with open(os.path.join(self.d, "recall.md"), encoding="utf-8") as fh:
-            self.assertIn("**Recall, critical and high mutation types: 9 of 9 (100.0%)**", fh.read())
+            md = fh.read()
+        self.assertIn("**Recall, critical and high mutation types: 9 of 9 (100.0%)**", md)
+        self.assertIn("Build failures, not counted in recall: t/broken.", md)
+        self.assertNotIn("Tool failures (sitemend", md)
 
 
 if __name__ == "__main__":
