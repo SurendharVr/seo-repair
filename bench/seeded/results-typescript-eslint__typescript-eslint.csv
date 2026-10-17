@@ -8,5 +8,5 @@ typescript-eslint/typescript-eslint,robots-disallow-all,S1-INDEX-CONTRADICTION,c
 typescript-eslint/typescript-eslint,linked-page-deleted,S1-BROKEN-LINK,high,/blog/,y,y
 typescript-eslint/typescript-eslint,title-removed,S3-TITLE-MISSING,critical,/blog/,y,y
 typescript-eslint/typescript-eslint,hreflang-no-return,S1-HREFLANG-NO-RETURN,high,,n/a,
-typescript-eslint/typescript-eslint,title-duplicated,S3-TITLE-DUPLICATE,high,/blog/,n,n
+typescript-eslint/typescript-eslint,title-duplicated,S3-TITLE-DUPLICATE,high,/blog/announcing-typescript-eslint-v6/,y,y
 typescript-eslint/typescript-eslint,rating-unsupported,S5-SCHEMA-UNSUPPORTED-CLAIM,high,/blog/,n,n

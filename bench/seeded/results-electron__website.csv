@@ -8,5 +8,5 @@ electron/website,robots-disallow-all,S1-INDEX-CONTRADICTION,critical,/robots.txt
 electron/website,linked-page-deleted,S1-BROKEN-LINK,high,/apps/,y,y
 electron/website,title-removed,S3-TITLE-MISSING,critical,/apps/,y,y
 electron/website,hreflang-no-return,S1-HREFLANG-NO-RETURN,high,,n/a,
-electron/website,title-duplicated,S3-TITLE-DUPLICATE,high,/apps/,n,n
+electron/website,title-duplicated,S3-TITLE-DUPLICATE,high,/blog/2015-whats-new-in-electron/,y,y
 electron/website,rating-unsupported,S5-SCHEMA-UNSUPPORTED-CLAIM,high,/apps/,y,y

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Seeded recall on 1.7.0, both runs.** `bench/seeded/first-run-1.7.0/` is the first run
+  (31 of 33 critical and high mutations caught, 93.9%), `bench/seeded/` the re-run after the
+  duplicate-title targeting fix (33 of 33, 100%). The harness changed between them, after the
+  first run's data was seen, so both are kept. Controls passed 5 of 5 in each. The rating
+  mutation, reported apart, was caught 3 of 5 times in both: "4.7" appears as a version
+  number on the two sites where it was missed. The first run's files were committed by
+  mistake in #61 at `bench/seeded/`; they move to their own folder here.
 - **Replay pilot on 1.7.0, and one ledger row per blocking finding.** The 2-repository
   pilot re-ran on the frozen 1.7.0 (`bench/replay/pilot-1.7.0/`): all 42 commits built and
   were audited, 40 comparisons, one electron/website commit failed the gate with 14 blocking
