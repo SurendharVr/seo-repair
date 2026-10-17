@@ -86,5 +86,53 @@
     "build_command": "pnpm install --frozen-lockfile && cd apps/site && pnpm run deploy",
     "site_dir": "apps/site/build",
     "node_version": "24"
+  },
+  {
+    "repo": "facebook/flow",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "yarn --cwd website install --frozen-lockfile && yarn --cwd website build",
+    "site_dir": "website/build",
+    "node_version": "24"
+  },
+  {
+    "repo": "facebook/relay",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "yarn --cwd website install --frozen-lockfile && yarn --cwd website build",
+    "site_dir": "website/build",
+    "node_version": "24"
+  },
+  {
+    "repo": "typescript-eslint/typescript-eslint",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "pnpm install --frozen-lockfile && pnpm exec nx build website",
+    "site_dir": "packages/website/build",
+    "node_version": "24"
+  },
+  {
+    "repo": "apache/pulsar-site",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "yarn install --immutable && yarn build",
+    "site_dir": "build",
+    "node_version": "24"
+  },
+  {
+    "repo": "react-navigation/react-navigation.github.io",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "yarn install --immutable && yarn build",
+    "site_dir": "build",
+    "node_version": "24"
+  },
+  {
+    "repo": "ionic-team/capacitor-docs",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "npm ci && npm run build:preview",
+    "site_dir": "build",
+    "node_version": "24"
   }
 ]
