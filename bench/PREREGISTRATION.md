@@ -127,4 +127,5 @@ Applied to the full run's results as written, with the outcome at the top of the
 
 - Filled in and approved by (B): SurendharVr
 - Date: 2026-10-17
-- Merged before any replay run on real data (commit SHA of the merge): ____
+- Merged before any replay run on real data (commit SHA of the merge):
+  `5899d56a42f71ffdf8fad901913f2e5e2c8b6b50` (#48)
