@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **First verdicts in the evidence ledger.** B judged the 14 blocking findings from the
+  1.7.0 pilot (electron/website `273491c35a`, a new page whose language links and hreflang
+  alternates point to translations that 404 on the live site) `true_regression`, by a live
+  site check. `bench/summary.md` from the pilot now reads frequency 1 of 40 commits and
+  precision 14 of 14, still inconclusive under the pre-registered 20 verdicts; all 14 come
+  from one commit. No behaviour changed.
 - **Seeded recall on 1.7.0, both runs.** `bench/seeded/first-run-1.7.0/` is the first run
   (31 of 33 critical and high mutations caught, 93.9%), `bench/seeded/` the re-run after the
   duplicate-title targeting fix (33 of 33, 100%). The harness changed between them, after the
