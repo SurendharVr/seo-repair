@@ -1,0 +1,90 @@
+[
+  {
+    "repo": "electron/website",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "yarn install --immutable && yarn build",
+    "site_dir": "build",
+    "node_version": "24"
+  },
+  {
+    "repo": "vuejs/docs",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "pnpm install --frozen-lockfile && pnpm run build",
+    "site_dir": ".vitepress/dist",
+    "node_version": "24"
+  },
+  {
+    "repo": "ionic-team/ionic-docs",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "npm ci && npm run build:production",
+    "site_dir": "build",
+    "node_version": "24"
+  },
+  {
+    "repo": "trpc/trpc",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "pnpm install --frozen-lockfile && pnpm --dir www build",
+    "site_dir": "www/build",
+    "node_version": "24"
+  },
+  {
+    "repo": "unocss/unocss",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "pnpm install --frozen-lockfile && pnpm --dir docs build",
+    "site_dir": "docs/dist",
+    "node_version": "24"
+  },
+  {
+    "repo": "vitest-dev/vitest",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "pnpm install --frozen-lockfile && pnpm ci:docs",
+    "site_dir": "docs/.vitepress/dist",
+    "node_version": "24"
+  },
+  {
+    "repo": "cloudflare/cloudflare-docs",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "pnpm install --frozen-lockfile && pnpm run build",
+    "site_dir": "dist",
+    "node_version": "24"
+  },
+  {
+    "repo": "drizzle-team/drizzle-orm-docs",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "pnpm install --frozen-lockfile && pnpm run build",
+    "site_dir": "dist",
+    "node_version": "24"
+  },
+  {
+    "repo": "webpro-nl/knip",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "pnpm install --frozen-lockfile && pnpm --dir packages/docs build",
+    "site_dir": "packages/docs/dist",
+    "node_version": "24"
+  },
+  {
+    "repo": "open-telemetry/opentelemetry.io",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "npm ci && npm run build:production",
+    "site_dir": "public",
+    "node_version": "24"
+  },
+  {
+    "repo": "nodejs/nodejs.org",
+    "ref_cutoff": "2026-10-01T00:00:00Z",
+    "commits": 50,
+    "build_command": "pnpm install --frozen-lockfile && cd apps/site && pnpm run deploy",
+    "site_dir": "apps/site/build",
+    "node_version": "24"
+  }
+]

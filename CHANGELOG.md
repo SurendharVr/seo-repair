@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Replay harness for the benchmark.** `bench/replay/replay.py` builds each pre-registered
+  repository's last N first-parent commits before the cutoff, audits every build with the
+  frozen sitemend (it refuses any version but 1.6.0) and runs the gate on each consecutive
+  pair, writing `bench/replay/results.csv`. Builds are cached per commit, a failed build is
+  recorded as skipped rather than as a pass or a fail, and `--pilot` runs 2 repositories x
+  20 commits. `bench/replay/repos.json` holds the 11 repositories from the pre-registration.
+  The manual `replay` workflow runs it on Ubuntu, one repository per job, and uploads each
+  job's results and audits. Not part of the package. No behaviour changed.
 - **Pre-registration for the replay benchmark.** `bench/PREREGISTRATION.md` fixes, before any
   data exists, the frozen version (1.6.0, `badbb38`), the 11 repositories, the commit range
   (last 50 commits before 2026-10-01), the pass/fail thresholds and the decision rules.

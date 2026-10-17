@@ -3233,5 +3233,139 @@ class TestGithubAction(unittest.TestCase):
                          ["code=0", "result=pass"])
 
 
+class TestReplay(unittest.TestCase):
+    """bench/replay/replay.py builds a repository's real commits and runs the gate on each
+    consecutive pair. Two throwaway git repositories stand in for real sites, so no
+    network is needed. A failed build must never read as a pass or a fail."""
+
+    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    SCRIPT = os.path.join(ROOT, "bench", "replay", "replay.py")
+    BUILD = ("import os, shutil, sys\n"
+             "if os.path.exists('src/FAIL'):\n    sys.exit('build failed')\n"
+             "shutil.copytree('src', 'out')\n")
+
+    @classmethod
+    def setUpClass(cls):
+        if not os.path.isfile(cls.SCRIPT):
+            raise unittest.SkipTest("bench/ is not shipped in the sdist")
+        if not shutil.which("git"):
+            raise unittest.SkipTest("git not available")
+        cls.tmp = tempfile.mkdtemp(prefix="sitemend-replay-")
+        page = lambda link="", words=300: page_html(body="<h1>H</h1><p>" + link + "word " * words + "</p>")
+        # Cutoff 2026-02-01: the last commit of each is after it and must never be built.
+        cls.a = cls._repo("a", [
+            ("2026-01-01", {"build.py": cls.BUILD, "src/index.html": page()}),
+            ("2026-01-02", {"src/index.html": page(words=310)}),
+            ("2026-01-03", {"src/index.html": page('<a href="/gone/">x</a> ')}),
+            ("2026-01-04", {"src/FAIL": "x"}),
+            ("2026-01-05", {"src/FAIL": None}),
+            ("2026-03-01", {"src/index.html": page(words=320)}),
+        ])
+        cls.b = cls._repo("b", [
+            ("2026-01-01", {"build.py": cls.BUILD, "src/index.html": page()}),
+            ("2026-01-02", {"src/index.html": page(words=310)}),
+            ("2026-03-01", {"src/index.html": page(words=320)}),
+        ])
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, True)
+
+    @classmethod
+    def _repo(cls, name, steps):
+        path = os.path.join(cls.tmp, "src-" + name)
+        os.makedirs(path)
+
+        def git(*args, date="2026-01-01"):
+            stamp = date + "T12:00:00+00:00"
+            subprocess.run(["git"] + list(args), cwd=path, check=True, capture_output=True,
+                           env=dict(os.environ, GIT_AUTHOR_DATE=stamp, GIT_COMMITTER_DATE=stamp,
+                                    GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.test",
+                                    GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.test"))
+        git("init", "-q", "-b", "main")
+        git("config", "commit.gpgsign", "false")
+        shas = []
+        for date, files in steps:
+            for rel, content in files.items():
+                full = os.path.join(path, rel)
+                if content is None:
+                    os.remove(full)
+                    continue
+                os.makedirs(os.path.dirname(full) or path, exist_ok=True)
+                with open(full, "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write(content)
+            git("add", "-A")
+            git("commit", "-q", "-m", date, date=date)
+            shas.append(subprocess.run(["git", "rev-parse", "HEAD"], cwd=path, check=True,
+                                       capture_output=True, text=True).stdout.strip())
+        return path, shas
+
+    def _run(self, entries, *flags):
+        """Run the harness on a fresh config; return (results rows, out dir, run dir)."""
+        d = tempfile.mkdtemp(prefix="run-", dir=self.tmp)
+        cfg = os.path.join(d, "repos.json")
+        with open(cfg, "w", encoding="utf-8") as fh:
+            json.dump([dict(e, ref_cutoff="2026-02-01T00:00:00Z", site_dir="out", node_version="24",
+                            build_command='"{0}" build.py'.format(sys.executable)) for e in entries], fh)
+        return self._again(d, *flags)
+
+    def _again(self, d, *flags):
+        out, results = os.path.join(d, "out"), os.path.join(d, "results.csv")
+        r = subprocess.run([sys.executable, self.SCRIPT, "--config", os.path.join(d, "repos.json"),
+                            "--work", os.path.join(d, "work"), "--out", out, "--results", results,
+                            "--scripts", sitemend.HERE] + list(flags),
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        self.assertEqual(r.returncode, 0, r.stdout[-2000:] + r.stderr[-2000:])
+        import csv
+        with open(results, encoding="utf-8", newline="") as fh:
+            return list(csv.DictReader(fh)), out, d
+
+    def test_consecutive_commits_are_compared_and_failed_builds_skipped(self):
+        a, sa = self.a
+        rows, out, d = self._run([{"repo": "t/a", "url": a, "commits": 4}])
+        ra = rows
+        self.assertEqual([(r["base_sha"], r["head_sha"]) for r in ra],
+                         list(zip(sa[:4], sa[1:5])))
+        self.assertEqual([r["gate_result"] for r in ra],
+                         ["pass", "fail", "skipped_build_failed", "skipped_build_failed"])
+        self.assertNotIn(sa[5], {r["head_sha"] for r in rows}, "a commit after the cutoff was built")
+        with open(os.path.join(d, ra[1]["new_findings_json_path"]), encoding="utf-8") as fh:
+            self.assertEqual([f["id"] for f in json.load(fh)["regressions"]], ["S1-BROKEN-LINK"])
+        self.assertEqual(ra[2]["new_findings_json_path"], "")
+        self.assertTrue(float(ra[0]["build_seconds"]) >= 0 and float(ra[0]["audit_seconds"]) > 0)
+
+        # A re-run reuses every build and audit and writes the same results.
+        marker = os.path.join(out, "t__a", sa[0], "build.json")
+        before = os.path.getmtime(marker)
+        again, _, _ = self._again(d)
+        self.assertEqual(os.path.getmtime(marker), before)
+        self.assertEqual(again, rows)
+
+    def test_pilot_runs_two_repositories_at_twenty_commits(self):
+        """commits: 0 would compare nothing. The pilot asks for 20, and b has only two
+        commits before the cutoff, so each repository gets exactly one comparison."""
+        b, sb = self.b
+        rows, _, _ = self._run([{"repo": "t/x", "url": b, "commits": 0},
+                                {"repo": "t/y", "url": b, "commits": 0},
+                                {"repo": "t/z", "url": b, "commits": 0}], "--pilot")
+        self.assertEqual([(r["repo"], r["head_sha"], r["gate_result"]) for r in rows],
+                         [("t/x", sb[1], "pass"), ("t/y", sb[1], "pass")])
+
+    def test_list_prints_the_selection_for_a_ci_matrix(self):
+        """The replay workflow runs one job per repository from this list."""
+        cfg = os.path.join(tempfile.mkdtemp(prefix="run-", dir=self.tmp), "repos.json")
+        with open(cfg, "w", encoding="utf-8") as fh:
+            json.dump([{"repo": n, "node_version": 24} for n in ("o/a", "o/b", "o/c")], fh)
+
+        def listed(*flags):
+            r = subprocess.run([sys.executable, self.SCRIPT, "--config", cfg, "--list"] + list(flags),
+                               capture_output=True, text=True, check=True)
+            return json.loads(r.stdout)
+        self.assertEqual(listed("--pilot"), [{"repo": "o/a", "slug": "o__a", "node_version": "24"},
+                                             {"repo": "o/b", "slug": "o__b", "node_version": "24"}])
+        self.assertEqual([e["repo"] for e in listed("--pilot", "--only", "o/c")], ["o/c"])
+        self.assertEqual(len(listed()), 3)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
