@@ -1,0 +1,12 @@
+repo,mutation,expected_rule,expected_severity,target,fired,gate_failed
+electron/website,control,,,,,n
+electron/website,canonical-removed,S1-CANONICAL-MISSING,medium,/apps/,y,n
+electron/website,noindex-added,S1-INDEX-CONTRADICTION,critical,/apps/,y,y
+electron/website,canonical-preview-host,S1-CANONICAL-OFFSITE,critical,/apps/,y,y
+electron/website,sitemap-preview-host,S1-HOST-MISMATCH,critical,/sitemap.xml,y,y
+electron/website,robots-disallow-all,S1-INDEX-CONTRADICTION,critical,/robots.txt,y,y
+electron/website,linked-page-deleted,S1-BROKEN-LINK,high,/apps/,y,y
+electron/website,title-removed,S3-TITLE-MISSING,critical,/apps/,y,y
+electron/website,hreflang-no-return,S1-HREFLANG-NO-RETURN,high,,n/a,
+electron/website,title-duplicated,S3-TITLE-DUPLICATE,high,/apps/,n,n
+electron/website,rating-unsupported,S5-SCHEMA-UNSUPPORTED-CLAIM,high,/apps/,y,y

@@ -1,0 +1,12 @@
+repo,mutation,expected_rule,expected_severity,target,fired,gate_failed
+typescript-eslint/typescript-eslint,control,,,,,n
+typescript-eslint/typescript-eslint,canonical-removed,S1-CANONICAL-MISSING,medium,/blog/,y,n
+typescript-eslint/typescript-eslint,noindex-added,S1-INDEX-CONTRADICTION,critical,/blog/,y,y
+typescript-eslint/typescript-eslint,canonical-preview-host,S1-CANONICAL-OFFSITE,critical,/blog/,y,y
+typescript-eslint/typescript-eslint,sitemap-preview-host,S1-HOST-MISMATCH,critical,/sitemap.xml,y,y
+typescript-eslint/typescript-eslint,robots-disallow-all,S1-INDEX-CONTRADICTION,critical,/robots.txt,y,y
+typescript-eslint/typescript-eslint,linked-page-deleted,S1-BROKEN-LINK,high,/blog/,y,y
+typescript-eslint/typescript-eslint,title-removed,S3-TITLE-MISSING,critical,/blog/,y,y
+typescript-eslint/typescript-eslint,hreflang-no-return,S1-HREFLANG-NO-RETURN,high,,n/a,
+typescript-eslint/typescript-eslint,title-duplicated,S3-TITLE-DUPLICATE,high,/blog/,n,n
+typescript-eslint/typescript-eslint,rating-unsupported,S5-SCHEMA-UNSUPPORTED-CLAIM,high,/blog/,n,n

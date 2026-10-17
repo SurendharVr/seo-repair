@@ -1,0 +1,12 @@
+repo,mutation,expected_rule,expected_severity,target,fired,gate_failed
+unocss/unocss,control,,,,,n
+unocss/unocss,canonical-removed,S1-CANONICAL-MISSING,medium,,n/a,
+unocss/unocss,noindex-added,S1-INDEX-CONTRADICTION,critical,,n/a,
+unocss/unocss,canonical-preview-host,S1-CANONICAL-OFFSITE,critical,,n/a,
+unocss/unocss,sitemap-preview-host,S1-HOST-MISMATCH,critical,,n/a,
+unocss/unocss,robots-disallow-all,S1-INDEX-CONTRADICTION,critical,,n/a,
+unocss/unocss,linked-page-deleted,S1-BROKEN-LINK,high,/config/,y,y
+unocss/unocss,title-removed,S3-TITLE-MISSING,critical,/config/,y,y
+unocss/unocss,hreflang-no-return,S1-HREFLANG-NO-RETURN,high,/config/,y,y
+unocss/unocss,title-duplicated,S3-TITLE-DUPLICATE,high,/config/autocomplete.html,y,y
+unocss/unocss,rating-unsupported,S5-SCHEMA-UNSUPPORTED-CLAIM,high,/config/,y,y
