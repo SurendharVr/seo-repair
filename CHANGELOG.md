@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Seeded recall harness fixes.** A repository whose build fails is now recorded as
+  `build_failed` with its own column in `recall.md`, not as a sitemend tool failure, which
+  Addendum 1 reserves for audits sitemend cannot complete. Mutations no longer target
+  404, error or thank-you pages (sitemend's own `is_utility` test): the first seeded run
+  put the rating mutation on `/404.html`. No behaviour changed.
 - **Seeded-regression recall for the benchmark.** `bench/seeded/seeded.py` builds each of
   the first 5 pre-registered repositories once, applies 10 known regressions one at a time
   to a copy of the built output (canonical removed, noindex added, canonical and sitemap on
