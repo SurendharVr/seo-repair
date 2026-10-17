@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **A reproducible sample for the benchmark (Addendum 5, awaiting sign-off).** The replay
+  repositories were Claude's picks from memory; they are replaced by a procedure anyone can
+  rerun: a saved GitHub code-search frame per stack, a shuffle with seed 20261017, recorded
+  eligibility checks, a mechanical build-command rule and a build check at the cutoff
+  commit, taking the first 3 repositories per stack that build (15 in all, 40 commits each).
+  Every repository used in the plan so far is excluded. The full run of the old sample was
+  cancelled and its data is not used. No behaviour changed.
 - **First verdicts in the evidence ledger.** B judged the 14 blocking findings from the
   1.7.0 pilot (electron/website `273491c35a`, a new page whose language links and hreflang
   alternates point to translations that 404 on the live site) `true_regression`, by a live
