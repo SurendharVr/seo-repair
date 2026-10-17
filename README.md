@@ -135,7 +135,7 @@ from that:
 | **Structured data** | Required properties, if it checks at all | Required properties, and whether the markup claims things the page never shows, such as review authors |
 | **Applying fixes** | Suggestions | One approved batch at a time, then a re-crawl to confirm it worked. Nothing is edited without approval |
 | **In CI** | No | The example GitHub Action fails a PR only on findings it introduces, and comments the new and closed ones on the PR |
-| **Tested** | Not testable | 259 tests, many pinned to false positives found on real runs |
+| **Tested** | Not testable | 261 tests, many pinned to false positives found on real runs |
 
 **How big is the gap?** We measured it on the demo site (5 pages, 14 planted defects).
 Three plain "audit this site" runs by an AI agent with read-only file access found 14, 12
@@ -429,7 +429,7 @@ only requests your own site.
 python tests/test_skill.py
 ```
 
-259 tests (two are opt-in: real Lighthouse and real Chrome rendering), no fixture files — each builds a throwaway site in a temp directory. They pin
+261 tests (two are opt-in: real Lighthouse and real Chrome rendering), no fixture files — each builds a throwaway site in a temp directory. They pin
 down calibration decisions made after real false positives: build-directory exclusion,
 deliberate `noindex`, finding grouping, title thresholds, heading order, schema claim
 corroboration, gate boundaries. A failure means *"was this behaviour meant to change"*,
