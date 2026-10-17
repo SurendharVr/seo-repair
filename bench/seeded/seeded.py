@@ -157,8 +157,11 @@ def title_duplicated(site, crawl):
     counts = {}
     for p in pages:
         counts[p["title"]] = counts.get(p["title"], 0) + 1
-    a = next((p for p in pages if counts[p["title"]] == 1), None)
-    b = next((p for p in pages if a and p["url"] != a["url"]), None)
+    # Both titles unique, so the mutation only adds a duplicate. A page already in a
+    # duplicate group would end that pair while making a new one (#60).
+    unique = [p for p in pages if counts[p["title"]] == 1]
+    a = next(iter(unique), None)
+    b = next((p for p in unique if a and p["url"] != a["url"]), None)
     if not (a and b):
         return None
     title = "<title>{0}</title>".format(html.escape(a["title"], quote=False))

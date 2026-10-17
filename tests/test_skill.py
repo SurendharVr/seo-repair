@@ -3562,7 +3562,14 @@ class TestSeededRecall(unittest.TestCase):
                                     + "</urlset>",
                  # An error page that sorts before every content page: never a target.
                  "src/404.html": page_html(title="Page Not Found On The Widget Handbook Site",
-                                           body="<h1>Not found</h1><p>" + "gone " * 300 + "</p>")}
+                                           body="<h1>Not found</h1><p>" + "gone " * 300 + "</p>"),
+                 # Two pages that already share a title, sorting before the content pages:
+                 # the page given a copied title must not be one of them, or the mutation
+                 # swaps one duplicate pair for another instead of adding one (#60).
+                 "src/0a.html": page_html(title="An Older Widget Page With A Shared Title",
+                                          body="<h1>Old A</h1><p>" + "older " * 300 + "</p>"),
+                 "src/0b.html": page_html(title="An Older Widget Page With A Shared Title",
+                                          body="<h1>Old B</h1><p>" + "elder " * 300 + "</p>")}
         for i, (u, f) in enumerate(pages.items()):
             files["src/" + f] = page_html(
                 title="Widget Handbook Chapter Number {0} Overview".format(i),

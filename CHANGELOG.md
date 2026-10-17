@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Seeded recall: the duplicate-title mutation only adds a duplicate.** The page given a
+  copied title must now have a unique title itself. In the 1.7.0 seeded run it twice
+  landed on a page already in a duplicate group, so the mutation ended one pair while
+  making another, and the gate read that as the old finding changed (#60, logged rather
+  than fixed while 1.7.0 is frozen). Changed after that run, so the re-run's recall is
+  reported next to the first one. No behaviour changed.
 - **The benchmark is re-frozen on 1.7.0 (Addendum 3, signed by SurendharVr).** The replay and
   seeded harnesses and their workflows now require sitemend 1.7.0, and data from 1.6.0 is
   superseded. facebook/relay and typescript-eslint/typescript-eslint replace ionic-docs and
