@@ -10,7 +10,8 @@ base of the next, so N comparisons cost N+1 builds.
   python bench/replay/replay.py --only vuejs/docs
   python bench/replay/replay.py --pilot --list      # the selection as JSON, for a CI matrix
 
-Writes bench/replay/results.csv, one row per comparison. Each commit's build and audit are
+Writes bench/replay/results.csv, one row per comparison, and builds.csv beside it, one row
+per commit built, with the reason for any failed build or audit. Each commit's build and audit are
 cached under --out by SHA, so a re-run only does what is missing. A failed build is never a
 pass or a fail: both comparisons that touch it are recorded as skipped. Stopping a run
 mid-build records that commit as build_failed too; delete its folder under --out before
@@ -25,6 +26,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import shutil
 import statistics
 import subprocess
@@ -34,6 +36,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 FROZEN = "1.6.0"
 PILOT = (2, 20)
+BUILD_FIELDS = ["repo", "sha", "status", "build_seconds", "audit_seconds", "node", "error"]
 FIELDS = ["repo", "base_sha", "head_sha", "build_seconds", "audit_seconds", "gate_result",
           "new_findings_json_path"]
 
@@ -117,6 +120,19 @@ def build_and_audit(entry, path, sha, outdir, py, scripts, env, timeout):
     return rec
 
 
+def failure_reason(rec, outdir):
+    """The last line the failed step printed: for a crash, the exception."""
+    if rec["status"] == "ok":
+        return ""
+    log = os.path.join(outdir, "audit.log" if rec["status"] == "audit_failed" else "build.log")
+    try:
+        with open(log, encoding="utf-8", errors="replace") as fh:
+            lines = [re.sub(r"\x1b\[[0-9;]*m", "", l).strip() for l in fh]
+    except OSError:
+        return ""
+    return next((l for l in reversed(lines) if l), "")[:200]
+
+
 def compare(py, scripts, base_dir, head_dir, env):
     """The gate, head against base: pass or fail, from verify.py's exit code."""
     out = os.path.join(head_dir, "verify.json")
@@ -151,6 +167,7 @@ def main(argv=None):
     ap.add_argument("--work", default=os.path.join(HERE, "work"), help="clones go here")
     ap.add_argument("--out", default=os.path.join(HERE, "out"), help="per-commit audits go here")
     ap.add_argument("--results", default=os.path.join(HERE, "results.csv"))
+    ap.add_argument("--builds", help="per-commit CSV (default: builds*.csv beside --results)")
     ap.add_argument("--pilot", action="store_true",
                     help="the first {0} repositories, {1} commits each".format(*PILOT))
     ap.add_argument("--only", help="comma-separated owner/name list")
@@ -192,7 +209,8 @@ def main(argv=None):
                 entry["repo"], i, len(shas), sha[:10], rec["status"], rec["build_seconds"],
                 "-" if rec["audit_seconds"] is None else rec["audit_seconds"]), flush=True)
             recs.append((rec, outdir))
-        builds.extend(r for r, _ in recs)
+        builds.extend(dict({k: r.get(k) for k in BUILD_FIELDS}, repo=entry["repo"],
+                           error=failure_reason(r, d)) for r, d in recs)
         for (base, base_dir), (head, head_dir) in zip(recs, recs[1:]):
             row = {"repo": entry["repo"], "base_sha": base["sha"], "head_sha": head["sha"],
                    "build_seconds": head["build_seconds"], "audit_seconds": head["audit_seconds"]}
@@ -211,6 +229,13 @@ def main(argv=None):
         w = csv.DictWriter(fh, fieldnames=FIELDS, lineterminator="\n")
         w.writeheader()
         w.writerows(rows)
+
+    builds_path = args.builds or os.path.join(os.path.dirname(os.path.abspath(args.results)),
+                                              os.path.basename(args.results).replace("results", "builds", 1))
+    with open(builds_path, "w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=BUILD_FIELDS, lineterminator="\n")
+        w.writeheader()
+        w.writerows(builds)
 
     ok = [b for b in builds if b["status"] == "ok"]
     print("\n{0} builds ({1} ok, {2} failed), {3} comparisons -> {4}".format(
