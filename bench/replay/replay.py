@@ -34,7 +34,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FROZEN = "1.6.0"
+FROZEN = "1.7.0"   # bench/PREREGISTRATION.md, Addendum 3
 PILOT = (2, 20)
 BUILD_FIELDS = ["repo", "sha", "status", "build_seconds", "audit_seconds", "node", "error"]
 FIELDS = ["repo", "base_sha", "head_sha", "build_seconds", "audit_seconds", "gate_result",

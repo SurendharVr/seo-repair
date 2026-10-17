@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **The benchmark is re-frozen on 1.7.0 (Addendum 3, awaiting sign-off).** The replay and
+  seeded harnesses and their workflows now require sitemend 1.7.0, and data from 1.6.0 is
+  superseded. facebook/relay and typescript-eslint/typescript-eslint replace ionic-docs and
+  trpc, whose builds could not be fixed within Addendum 2's rules; unocss keeps its fixed
+  build command. Addendum 3 records the pick rule and every candidate's outcome. The seeded
+  rating mutation is reported apart from the pooled recall, because its rule was fixed
+  after the test showed it missed. No behaviour changed.
+
 ## 1.7.0 - 2026-10-17
 
 The example workflows and README pin `@v1.7.0`. A minor release under the stability policy,

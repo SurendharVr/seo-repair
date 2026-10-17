@@ -175,6 +175,84 @@ replaced. Instead, decided by B before any full-run data exists:
 | trpc/trpc | `pnpm install --frozen-lockfile && pnpm --dir www build` | `export NODE_OPTIONS=--max-old-space-size=8192 && pnpm install --frozen-lockfile && pnpm build-www` | The root `build-www` script (`turbo --filter www build`) builds the workspace packages the site depends on; the default heap ran out at about 4 GB. |
 | unocss/unocss | `pnpm install --frozen-lockfile && pnpm --dir docs build` | `export NODE_OPTIONS=--max_old_space_size=4096 && pnpm install --frozen-lockfile && pnpm run build && pnpm --dir docs build` | `netlify.toml` runs `pnpm run deploy` (`nr build && npm -C docs run build && …`) with that `NODE_OPTIONS`; the playground and interactive builds are not part of the docs site. |
 
-Verified on Ubuntu: ____ (run link).
+Verified on Ubuntu (GitHub Actions run 39020679625, branch `fix/build-commands`):
+unocss/unocss built and was audited with the new command. ionic-team/ionic-docs still
+failed: its next empty sidebar category ("Plugins") comes from `native.mjs`, which fetches
+plugin READMEs at `@latest`, live content this addendum rules out. trpc/trpc built its
+packages but failed type-checking a docs sample, although trpc's own Vercel deployment of
+the same commit succeeded. Both are replaced, as section 2 says; see Addendum 3.
 
 Decided by (B): SurendharVr. Date: 2026-10-17.
+
+## Addendum 3: re-freeze on 1.7.0 and two replacements (2026-10-17, before the full run)
+
+**Why.** Two problems found before any full-run data, both on 1.6.0:
+
+- **#51:** sitemend 1.6.0 crashed auditing electron/website (Addendum 1), and then three
+  of the replacement candidates below: typescript-eslint, react-navigation and
+  pulsar-site. Tool failures would have been a large part of the result.
+- **Rating tokens:** the seeded recall run found that `S5-SCHEMA-UNSUPPORTED-CLAIM`
+  corroborated a rating of "4.7" from the digits "4" and "7", which every site contains.
+
+B lifted the 1.6.0 freeze to fix both (#57), released as 1.7.0.
+
+**1. Frozen version (supersedes section 1).**
+
+- Package: `sitemend==1.7.0`
+- Tag: `v1.7.0`
+- Commit: `a64e05de358deece65a8065a65c5c65a34450490`
+
+`FROZEN` in `bench/replay/replay.py` and both benchmark workflows pin it. No rule,
+threshold or severity changes until the Task 8 report is published; a bug found from here
+on is logged and gets an issue.
+
+**2. Data from 1.6.0 is superseded.** The pilot (`bench/replay/pilot/`) and both seeded runs
+used 1.6.0. They stay in the repository as the record of how these problems were found, but
+the measurement uses only data produced with 1.7.0. The pilot and the seeded test are re-run
+on 1.7.0 before the full run.
+
+**3. The rating mutation is reported apart.** The rating rule was fixed after the seeded
+test showed this mutation being missed, so its result on 1.7.0 is not independent evidence.
+`rating-unsupported` is still run and reported, but it is left out of the pooled
+critical-and-high recall that section 4's threshold applies to.
+
+**4. Replacements for ionic-team/ionic-docs and trpc/trpc** (Addendum 2).
+
+The pick rule was fixed before any candidate was built:
+
+1. **Same stack** as the repositories replaced: both were Docusaurus.
+2. **Section 2's criteria:** at least 75 default-branch commits in the 12 months before
+   the cutoff, and not a tuning site or a repository already in the list.
+3. **Addendum 2's rules:** the project's own build, run as-is, with no secret and no live
+   content (no stubs).
+4. **Order:** most commits in the window first. The first two that build on the Ubuntu
+   runner at the cutoff commit are taken.
+
+The candidate pool is nine Docusaurus repositories Claude identified on 2026-10-17. Builds
+ran in GitHub Actions run 39021656493 (branch `tmp/replacement-candidates`).
+
+| # | Candidate | Commits in window | Outcome |
+|---|---|---|---|
+| 1 | datahub-project/datahub | 3458 | Excluded before building: its setup script (`vercel-setup.sh`) runs only on Amazon Linux (`yum`) |
+| 2 | facebook/flow | 2244 | Build failed: the site needs the `flow` binary (`spawn flow ENOENT`) |
+| 3 | temporalio/documentation | 1247 | Excluded before building: `prebuild` clones a live repository |
+| 4 | **facebook/relay** | 1014 | **Built. Taken** |
+| 5 | **typescript-eslint/typescript-eslint** | 681 | **Built. Taken** (its 1.6.0 audit crashed on #51) |
+| 6 | webdriverio/webdriverio | 550 | Excluded before building: its docs generator downloads live content |
+| 7 | apache/pulsar-site | 417 | Built; not needed (1.6.0 audit crashed on #51) |
+| 8 | react-navigation/react-navigation.github.io | 390 | Built; not needed (1.6.0 audit crashed on #51) |
+| 9 | ionic-team/capacitor-docs | 82 | Built; not needed |
+
+In `bench/replay/repos.json`, relay takes ionic-docs' place (3rd) and typescript-eslint
+takes trpc's (4th), so the seeded test's first five are electron/website, vuejs/docs,
+facebook/relay, typescript-eslint and unocss/unocss.
+
+| Repository | Build command | Site dir |
+|---|---|---|
+| facebook/relay | `yarn --cwd website install --frozen-lockfile && yarn --cwd website build` | `website/build` |
+| typescript-eslint/typescript-eslint | `pnpm install --frozen-lockfile && pnpm exec nx build website` (its `netlify.toml`) | `packages/website/build` |
+
+**5. Unchanged:** N (50), the cutoff (2026-10-01), the thresholds, the decision rules,
+Addendum 1 (tool failures) and Addendum 2's rules, with unocss/unocss's fixed command.
+
+Approved by (B): ____ Date: ____
