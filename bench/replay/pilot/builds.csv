@@ -1,43 +1,43 @@
-repo,sha,status,build_seconds,audit_seconds,node
-electron/website,250e37ee9a407cecd220a027ec07bae74595dd1d,audit_failed,54.0,52.7,v24.21.0
-electron/website,273491c35a1fd5b5eac8c4b33ee5a99246e9d2b5,audit_failed,53.2,53.7,v24.21.0
-electron/website,5a8fe1d0f0822f5dd481b143deabb48cdc583bda,audit_failed,67.9,53.1,v24.21.0
-electron/website,63ad3e138e7ea3b2f2a25354e31ff13105bdbb1c,audit_failed,52.9,52.9,v24.21.0
-electron/website,661fa99f7e7b25e7b5d2e1c060738490a58714a0,audit_failed,51.4,52.6,v24.21.0
-electron/website,66a06b5d1b81e6ca448b24cdaece767e6d12b534,audit_failed,51.3,52.5,v24.21.0
-electron/website,81b51d97ad225b852d8f9bad6cf56f8fb37702a8,audit_failed,54.5,53.0,v24.21.0
-electron/website,8285326708f93f43411e9cfdf6b3c6db65326a10,audit_failed,51.4,52.4,v24.21.0
-electron/website,a3ac3f9dfb02e12a3012afd533f7fb1451c449e0,audit_failed,52.0,52.6,v24.21.0
-electron/website,ab0f06c202eb822a7f108f49b6e39e8b2039217c,audit_failed,53.4,53.8,v24.21.0
-electron/website,af88443822eb7336b9f34f494b982f41bcddb9d9,audit_failed,53.9,52.3,v24.21.0
-electron/website,b84087b0f79a4ffe0b8c7da41c5ef40bd244fd5c,audit_failed,51.8,53.2,v24.21.0
-electron/website,c91c7162cdd033f31b44b6b2fc7acd95254e6223,audit_failed,54.0,53.8,v24.21.0
-electron/website,c933cbd0965e95747104da5f42e8cee0c797f987,audit_failed,53.9,52.4,v24.21.0
-electron/website,cbd5d870aecd114a865e1fb57e627179c26ba14a,audit_failed,51.3,53.7,v24.21.0
-electron/website,e29b95b3c844cb5e1d6ab6ecd9ef906824ab06fb,audit_failed,53.5,53.8,v24.21.0
-electron/website,e96f4d0d24c49a45a5a084bcae84d0790806f6a7,audit_failed,52.6,53.0,v24.21.0
-electron/website,ec15e42769c5a7556604f22b57c63b4774c3f9d1,audit_failed,53.8,52.7,v24.21.0
-electron/website,edf2516b03a6bbc02860f26fe741d2e0fadd58ba,audit_failed,52.8,53.0,v24.21.0
-electron/website,f6e4904be17fa708bfffd328e8e1415a02de6688,audit_failed,53.3,52.9,v24.21.0
-electron/website,ffefda2dcf8a2310b48e25ebd052df4986fb18c2,audit_failed,51.2,52.8,v24.21.0
-vuejs/docs,01e098a967951ea92d09b100b8e7d82c7a3369a2,ok,12.4,19.7,v24.21.0
-vuejs/docs,142fa3cc918500c8829c7d0abdd5e3e2ab7a72bc,ok,12.4,19.5,v24.21.0
-vuejs/docs,1a34602d7a2e427b977959833f2e689f0a158a9f,ok,12.4,19.6,v24.21.0
-vuejs/docs,1bdb627e282d0634b564881145dc2cc42102462d,ok,12.5,19.6,v24.21.0
-vuejs/docs,2009fe8482af1f87b0305d96ba6508c2016f6c6a,ok,12.6,19.7,v24.21.0
-vuejs/docs,203586be210d2d088c918f36a106f14f0b4f6a86,ok,12.6,19.7,v24.21.0
-vuejs/docs,23f16b39ba9dbacc594e5642678c29766309848e,ok,16.7,19.7,v24.21.0
-vuejs/docs,257fcf15b32896da6fb8bb5ec26d71e5dacedc58,ok,12.4,20.0,v24.21.0
-vuejs/docs,2a72ae9b88ac94a1ddd12a0e29fbcf9bfe67b1c4,ok,12.6,19.5,v24.21.0
-vuejs/docs,33ff72af9008c68e05360de34ef3e96e74bf70c9,ok,12.5,19.6,v24.21.0
-vuejs/docs,40aa88af0094f7bab4aaf786e55c748a6a251d88,ok,12.6,19.7,v24.21.0
-vuejs/docs,7681134fd8505e61a265d161d73d28acb3c74822,ok,12.4,19.7,v24.21.0
-vuejs/docs,a187dc97418c9bc840480ab49ebe71344b059882,ok,12.5,19.6,v24.21.0
-vuejs/docs,b0da2e8d94da46520292e9625427d2a9b7b64810,ok,12.4,19.7,v24.21.0
-vuejs/docs,b75d188ab16bf83bd1f364a77dfd2315be8f3fa4,ok,12.5,19.6,v24.21.0
-vuejs/docs,bdae3ed908e3770614890533d0307f4bb9690a19,ok,12.5,19.5,v24.21.0
-vuejs/docs,be32491e7a476a5e569ec38d7ca57e9bc942c514,ok,12.5,19.6,v24.21.0
-vuejs/docs,c3046b456388d67751f0d71f06950fb468a30310,ok,12.6,19.6,v24.21.0
-vuejs/docs,df5f1c23c4fd6b1048594182a08cdae2d7c266de,ok,12.5,19.7,v24.21.0
-vuejs/docs,e4641141026871271e5083c99ad4cd3f4a8e9a68,ok,12.3,19.6,v24.21.0
-vuejs/docs,e67ca4e04d802aa6953443b92dea1482f1b75719,ok,13.4,19.7,v24.21.0
+repo,sha,status,build_seconds,audit_seconds,node,error
+electron/website,5a8fe1d0f0822f5dd481b143deabb48cdc583bda,audit_failed,67.9,53.1,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,ab0f06c202eb822a7f108f49b6e39e8b2039217c,audit_failed,53.4,53.8,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,250e37ee9a407cecd220a027ec07bae74595dd1d,audit_failed,54.0,52.7,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,ffefda2dcf8a2310b48e25ebd052df4986fb18c2,audit_failed,51.2,52.8,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,63ad3e138e7ea3b2f2a25354e31ff13105bdbb1c,audit_failed,52.9,52.9,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,a3ac3f9dfb02e12a3012afd533f7fb1451c449e0,audit_failed,52.0,52.6,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,c933cbd0965e95747104da5f42e8cee0c797f987,audit_failed,53.9,52.4,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,661fa99f7e7b25e7b5d2e1c060738490a58714a0,audit_failed,51.4,52.6,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,81b51d97ad225b852d8f9bad6cf56f8fb37702a8,audit_failed,54.5,53.0,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,f6e4904be17fa708bfffd328e8e1415a02de6688,audit_failed,53.3,52.9,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,8285326708f93f43411e9cfdf6b3c6db65326a10,audit_failed,51.4,52.4,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,e96f4d0d24c49a45a5a084bcae84d0790806f6a7,audit_failed,52.6,53.0,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,ec15e42769c5a7556604f22b57c63b4774c3f9d1,audit_failed,53.8,52.7,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,66a06b5d1b81e6ca448b24cdaece767e6d12b534,audit_failed,51.3,52.5,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,edf2516b03a6bbc02860f26fe741d2e0fadd58ba,audit_failed,52.8,53.0,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,af88443822eb7336b9f34f494b982f41bcddb9d9,audit_failed,53.9,52.3,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,b84087b0f79a4ffe0b8c7da41c5ef40bd244fd5c,audit_failed,51.8,53.2,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,c91c7162cdd033f31b44b6b2fc7acd95254e6223,audit_failed,54.0,53.8,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,cbd5d870aecd114a865e1fb57e627179c26ba14a,audit_failed,51.3,53.7,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,273491c35a1fd5b5eac8c4b33ee5a99246e9d2b5,audit_failed,53.2,53.7,v24.21.0,ValueError: Invalid IPv6 URL
+electron/website,e29b95b3c844cb5e1d6ab6ecd9ef906824ab06fb,audit_failed,53.5,53.8,v24.21.0,ValueError: Invalid IPv6 URL
+vuejs/docs,23f16b39ba9dbacc594e5642678c29766309848e,ok,16.7,19.7,v24.21.0,
+vuejs/docs,203586be210d2d088c918f36a106f14f0b4f6a86,ok,12.6,19.7,v24.21.0,
+vuejs/docs,2a72ae9b88ac94a1ddd12a0e29fbcf9bfe67b1c4,ok,12.6,19.5,v24.21.0,
+vuejs/docs,c3046b456388d67751f0d71f06950fb468a30310,ok,12.6,19.6,v24.21.0,
+vuejs/docs,142fa3cc918500c8829c7d0abdd5e3e2ab7a72bc,ok,12.4,19.5,v24.21.0,
+vuejs/docs,1a34602d7a2e427b977959833f2e689f0a158a9f,ok,12.4,19.6,v24.21.0,
+vuejs/docs,bdae3ed908e3770614890533d0307f4bb9690a19,ok,12.5,19.5,v24.21.0,
+vuejs/docs,df5f1c23c4fd6b1048594182a08cdae2d7c266de,ok,12.5,19.7,v24.21.0,
+vuejs/docs,e4641141026871271e5083c99ad4cd3f4a8e9a68,ok,12.3,19.6,v24.21.0,
+vuejs/docs,01e098a967951ea92d09b100b8e7d82c7a3369a2,ok,12.4,19.7,v24.21.0,
+vuejs/docs,33ff72af9008c68e05360de34ef3e96e74bf70c9,ok,12.5,19.6,v24.21.0,
+vuejs/docs,7681134fd8505e61a265d161d73d28acb3c74822,ok,12.4,19.7,v24.21.0,
+vuejs/docs,b75d188ab16bf83bd1f364a77dfd2315be8f3fa4,ok,12.5,19.6,v24.21.0,
+vuejs/docs,2009fe8482af1f87b0305d96ba6508c2016f6c6a,ok,12.6,19.7,v24.21.0,
+vuejs/docs,a187dc97418c9bc840480ab49ebe71344b059882,ok,12.5,19.6,v24.21.0,
+vuejs/docs,be32491e7a476a5e569ec38d7ca57e9bc942c514,ok,12.5,19.6,v24.21.0,
+vuejs/docs,257fcf15b32896da6fb8bb5ec26d71e5dacedc58,ok,12.4,20.0,v24.21.0,
+vuejs/docs,1bdb627e282d0634b564881145dc2cc42102462d,ok,12.5,19.6,v24.21.0,
+vuejs/docs,b0da2e8d94da46520292e9625427d2a9b7b64810,ok,12.4,19.7,v24.21.0,
+vuejs/docs,e67ca4e04d802aa6953443b92dea1482f1b75719,ok,13.4,19.7,v24.21.0,
+vuejs/docs,40aa88af0094f7bab4aaf786e55c748a6a251d88,ok,12.6,19.7,v24.21.0,

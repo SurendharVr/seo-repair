@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Evidence ledger and summary for the benchmark.** `bench/verify_helper.py` adds one
+  `bench/ledger.csv` row per blocking finding from the replay and prints its evidence (the
+  finding, how each page's crawl record changed from base to head, robots.txt and sitemap
+  state, and the GitHub compare link); it never writes a verdict. `bench/summarize.py`
+  writes `bench/summary.md`: frequency per commit and precision per finding, kept apart,
+  precision by rule, tool failures with their reasons, and runtime median and 90th
+  percentile. `replay.py` now also writes `builds.csv`, one row per commit with the reason
+  for any failure. `bench/summary.md` is generated from the pilot. No behaviour changed.
 - **Replay pilot results and a tool-failure rule.** `bench/replay/pilot/` holds the Ubuntu
   pilot (2 repositories x 20 commits): vuejs/docs built and audited all 21 commits and all
   20 comparisons passed; electron/website built all 21 but sitemend 1.6.0 crashed auditing

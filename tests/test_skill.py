@@ -3333,6 +3333,13 @@ class TestReplay(unittest.TestCase):
             self.assertEqual([f["id"] for f in json.load(fh)["regressions"]], ["S1-BROKEN-LINK"])
         self.assertEqual(ra[2]["new_findings_json_path"], "")
         self.assertTrue(float(ra[0]["build_seconds"]) >= 0 and float(ra[0]["audit_seconds"]) > 0)
+        import csv
+        with open(os.path.join(d, "builds.csv"), encoding="utf-8", newline="") as fh:
+            builds = list(csv.DictReader(fh))
+        self.assertEqual([(b["sha"], b["status"]) for b in builds],
+                         list(zip(sa[:5], ["ok", "ok", "ok", "build_failed", "ok"])))
+        self.assertEqual(builds[3]["error"], "build failed")
+        self.assertEqual(builds[0]["error"], "")
 
         # A re-run reuses every build and audit and writes the same results.
         marker = os.path.join(out, "t__a", sa[0], "build.json")
@@ -3365,6 +3372,116 @@ class TestReplay(unittest.TestCase):
                                              {"repo": "o/b", "slug": "o__b", "node_version": "24"}])
         self.assertEqual([e["repo"] for e in listed("--pilot", "--only", "o/c")], ["o/c"])
         self.assertEqual(len(listed()), 3)
+
+
+class TestEvidenceLedger(unittest.TestCase):
+    """bench/verify_helper.py pre-fills one ledger row per blocking finding and shows the
+    evidence; a person writes every verdict. bench/summarize.py turns the ledger and the
+    replay's results into bench/summary.md, keeping per-commit frequency and per-finding
+    precision apart."""
+
+    BENCH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bench")
+    HEAD, BASE, OTHER = "h" * 40, "b" * 40, "c" * 40
+
+    def setUp(self):
+        if not os.path.isfile(os.path.join(self.BENCH, "summarize.py")):
+            raise unittest.SkipTest("bench/ is not shipped in the sdist")
+        self.d = tempfile.mkdtemp(prefix="sitemend-ledger-")
+        self.addCleanup(shutil.rmtree, self.d, True)
+
+    def _write(self, rel, text):
+        full = os.path.join(self.d, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text if isinstance(text, str) else json.dumps(text))
+        return full
+
+    def _csv(self, rel, header, rows):
+        return self._write(rel, "\n".join([",".join(header)] + [",".join(r) for r in rows]) + "\n")
+
+    def _run(self, script, *args):
+        r = subprocess.run([sys.executable, os.path.join(self.BENCH, script)] + list(args),
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+        self.assertEqual(r.returncode, 0, r.stdout[-2000:] + r.stderr[-2000:])
+        return r.stdout
+
+    def _ledger(self, path):
+        import csv
+        with open(path, encoding="utf-8", newline="") as fh:
+            return list(csv.DictReader(fh))
+
+    RESULTS = ["repo", "base_sha", "head_sha", "build_seconds", "audit_seconds", "gate_result",
+               "new_findings_json_path"]
+
+    def _replay(self):
+        """One failing comparison whose head made /drafts/a/ noindex, one passing one."""
+        page = lambda noindex: {"url": "/drafts/a/", "title": "Draft", "noindex": noindex,
+                                "robots_meta": "noindex" if noindex else None, "canonical": "/drafts/a/"}
+        for sha, noindex in ((self.BASE, False), (self.HEAD, True)):
+            self._write("out/o__r/{0}/crawl.json".format(sha),
+                        {"pages": [page(noindex)], "robots": {"found": True}, "sitemap": {"found": True}})
+        self._write("out/o__r/{0}/verify.json".format(self.HEAD), {"regressions": [
+            {"id": "S1-NOT-INDEXABLE", "severity": "critical", "pages": ["/drafts/a/"],
+             "evidence": '<meta name="robots" content="noindex">', "message": "Page is noindex"}]})
+        return self._csv("results.csv", self.RESULTS, [
+            ["o/r", self.BASE, self.HEAD, "10", "5", "fail", "out/o__r/{0}/verify.json".format(self.HEAD)],
+            ["o/r", self.OTHER, self.BASE, "10", "5", "pass", "out/o__r/{0}/verify.json".format(self.BASE)]])
+
+    def test_helper_prefills_rows_and_shows_evidence_but_never_a_verdict(self):
+        results, ledger = self._replay(), os.path.join(self.d, "ledger.csv")
+        out = self._run("verify_helper.py", "--results", results, "--ledger", ledger)
+        rows = self._ledger(ledger)
+        self.assertEqual([(r["repo"], r["head_sha"], r["rule_id"], r["severity"], r["url"], r["verdict"])
+                          for r in rows], [("o/r", self.HEAD, "S1-NOT-INDEXABLE", "critical", "/drafts/a/", "")])
+        self.assertIn('content="noindex"', rows[0]["evidence_excerpt"])
+        self.assertIn("noindex: False -> True", out)
+        self.assertIn("https://github.com/o/r/compare/{0}...{1}".format(self.BASE, self.HEAD), out)
+
+        # A second run adds nothing, and keeps a verdict a person wrote.
+        import csv
+        rows[0].update(verdict="true_regression", verified_by="B", verification_method="curl")
+        with open(ledger, "w", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(rows[0]), lineterminator="\n")
+            w.writeheader()
+            w.writerows(rows)
+        out = self._run("verify_helper.py", "--results", results, "--ledger", ledger)
+        self.assertEqual([r["verdict"] for r in self._ledger(ledger)], ["true_regression"])
+        self.assertNotIn("noindex: False -> True", out)
+
+    def test_summary_keeps_frequency_per_commit_and_precision_per_finding(self):
+        c1, c2, c3, c4 = ("1" * 40, "2" * 40, "3" * 40, "4" * 40)
+        results = self._csv("results.csv", self.RESULTS, [
+            ["o/r", self.BASE, c1, "10", "4", "fail", "x"],
+            ["o/r", c1, c2, "20", "6", "fail", "x"],
+            ["o/r", c2, c3, "30", "8", "pass", "x"],
+            ["o/r", c3, c4, "40", "", "skipped_audit_failed", ""]])
+        builds = self._csv("builds.csv", ["repo", "sha", "status", "build_seconds", "audit_seconds",
+                                          "node", "error"], [
+            ["o/r", self.BASE, "ok", "10", "4", "v24", ""], ["o/r", c1, "ok", "10", "4", "v24", ""],
+            ["o/r", c2, "ok", "20", "6", "v24", ""], ["o/r", c3, "ok", "30", "8", "v24", ""],
+            ["o/r", c4, "audit_failed", "40", "1", "v24", "ValueError: Invalid IPv6 URL"]])
+        ledger = self._csv("ledger.csv", ["repo", "head_sha", "rule_id", "severity", "url",
+                                          "evidence_excerpt", "verdict", "verified_by",
+                                          "verification_method", "notes"], [
+            ["o/r", c1, "S1-NOT-INDEXABLE", "critical", "/a/", "e", "true_regression", "B", "curl", ""],
+            ["o/r", c1, "S1-BROKEN-LINK", "high", "/a/", "e", "unclear", "B", "curl", ""],
+            ["o/r", c2, "S1-BROKEN-LINK", "high", "/b/", "e", "false_positive", "B", "curl", ""]])
+        out = os.path.join(self.d, "summary.md")
+        self._run("summarize.py", "--results", results, "--builds", builds, "--ledger", ledger, "--out", out)
+        with open(out, encoding="utf-8") as fh:
+            md = fh.read()
+        # Two commits failed the gate, but only one introduced a verified regression.
+        self.assertIn("| o/r | 3 | 2 | 1 | 1 |", md)
+        self.assertIn("**Frequency: 1 of 3 commits compared (33.3%)**", md)
+        # Unclear counts against precision, as pre-registered.
+        self.assertIn("**Precision: 1 of 3 blocking findings with a verdict (33.3%)**", md)
+        self.assertIn("| S1-BROKEN-LINK | 2 | 0 | 1 | 0 | 1 | 0 | 0.0% |", md)
+        self.assertIn("| S1-NOT-INDEXABLE | 1 | 1 | 0 | 0 | 0 | 0 | 100.0% |", md)
+        self.assertIn("inconclusive: 3 verdicts, 20 needed", md)
+        self.assertIn("| o/r | 1 | 0 | ValueError: Invalid IPv6 URL |", md)
+        self.assertIn("| Build | 4 | 15.0 | 30.0 |", md)
+        self.assertIn("| Audit | 4 | 5.0 | 8.0 |", md)
 
 
 if __name__ == "__main__":

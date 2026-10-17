@@ -80,5 +80,6 @@ jobs:
           name: replay-${{ matrix.slug }}
           path: |
             bench/replay/results-*.csv
+            bench/replay/builds-*.csv
             bench/replay/out/
           if-no-files-found: warn
