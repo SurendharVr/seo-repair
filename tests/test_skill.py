@@ -3498,6 +3498,21 @@ class TestEvidenceLedger(unittest.TestCase):
         self.assertEqual([r["verdict"] for r in self._ledger(ledger)], ["true_regression"])
         self.assertNotIn("noindex: False -> True", out)
 
+    def test_one_row_per_blocking_finding_not_per_rule_and_page(self):
+        """REGRESSION found by the 1.7.0 pilot: seven broken language links on one new
+        electron/website page became one ledger row, so precision, counted per finding,
+        would have counted one finding where the gate blocked on seven."""
+        results, ledger = self._replay(), os.path.join(self.d, "ledger.csv")
+        self._write("out/o__r/{0}/verify.json".format(self.HEAD), {"regressions": [
+            {"id": "S1-BROKEN-LINK", "severity": "high", "pages": ["/drafts/a/"],
+             "evidence": 'href="/de/x" -> /de/x', "message": "broken"},
+            {"id": "S1-BROKEN-LINK", "severity": "high", "pages": ["/drafts/a/"],
+             "evidence": 'href="/fr/x" -> /fr/x', "message": "broken"}]})
+        self._run("verify_helper.py", "--results", results, "--ledger", ledger)
+        self._run("verify_helper.py", "--results", results, "--ledger", ledger)
+        self.assertEqual(sorted(r["evidence_excerpt"] for r in self._ledger(ledger)),
+                         ['href="/de/x" -> /de/x', 'href="/fr/x" -> /fr/x'])
+
     def test_summary_keeps_frequency_per_commit_and_precision_per_finding(self):
         c1, c2, c3, c4 = ("1" * 40, "2" * 40, "3" * 40, "4" * 40)
         results = self._csv("results.csv", self.RESULTS, [
