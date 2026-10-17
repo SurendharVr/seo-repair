@@ -3351,6 +3351,21 @@ class TestReplay(unittest.TestCase):
         self.assertEqual([(r["repo"], r["head_sha"], r["gate_result"]) for r in rows],
                          [("t/x", sb[1], "pass"), ("t/y", sb[1], "pass")])
 
+    def test_list_prints_the_selection_for_a_ci_matrix(self):
+        """The replay workflow runs one job per repository from this list."""
+        cfg = os.path.join(tempfile.mkdtemp(prefix="run-", dir=self.tmp), "repos.json")
+        with open(cfg, "w", encoding="utf-8") as fh:
+            json.dump([{"repo": n, "node_version": 24} for n in ("o/a", "o/b", "o/c")], fh)
+
+        def listed(*flags):
+            r = subprocess.run([sys.executable, self.SCRIPT, "--config", cfg, "--list"] + list(flags),
+                               capture_output=True, text=True, check=True)
+            return json.loads(r.stdout)
+        self.assertEqual(listed("--pilot"), [{"repo": "o/a", "slug": "o__a", "node_version": "24"},
+                                             {"repo": "o/b", "slug": "o__b", "node_version": "24"}])
+        self.assertEqual([e["repo"] for e in listed("--pilot", "--only", "o/c")], ["o/c"])
+        self.assertEqual(len(listed()), 3)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

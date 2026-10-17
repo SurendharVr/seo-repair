@@ -1,0 +1,84 @@
+name: replay
+
+# Task 5 of the evidence plan: replay the pre-registered repositories through the frozen
+# gate (bench/replay/replay.py), one repository per job, on the clean Ubuntu runner the
+# pre-registration names. Manual only: each job builds another project's commits for hours.
+# Each job uploads its results-<repo>.csv and per-commit audits as an artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pilot:
+        description: Pilot (20 commits per repository; the first 2 in repos.json unless only is set)
+        type: boolean
+        default: true
+      only:
+        description: Comma-separated owner/name list (empty means every repository)
+        default: ""
+
+# Other projects' build scripts run here, so the token can only read this repository.
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      repos: ${{ steps.list.outputs.repos }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: list
+        env:
+          PILOT: ${{ inputs.pilot }}
+          ONLY: ${{ inputs.only }}
+        run: |
+          args=(--list)
+          if [ "$PILOT" = "true" ]; then args+=(--pilot); fi
+          if [ -n "$ONLY" ]; then args+=(--only "$ONLY"); fi
+          echo "repos=$(python3 bench/replay/replay.py "${args[@]}")" >> "$GITHUB_OUTPUT"
+
+  replay:
+    needs: plan
+    name: ${{ matrix.repo }}
+    runs-on: ubuntu-latest
+    # GitHub's limit for one job is 6 hours. The replay step stops first, so the commits it
+    # finished still upload; re-running replay.py on that out/ folder reuses them.
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.repos) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node_version }}
+      # The frozen version from bench/PREREGISTRATION.md; replay.py refuses any other.
+      - name: Install sitemend
+        run: python -m pip install --quiet "sitemend==1.6.0"
+      - name: Replay
+        timeout-minutes: 340
+        env:
+          REPO: ${{ matrix.repo }}
+          SLUG: ${{ matrix.slug }}
+          PILOT: ${{ inputs.pilot }}
+        run: |
+          args=(--only "$REPO" --results "bench/replay/results-$SLUG.csv")
+          if [ "$PILOT" = "true" ]; then args+=(--pilot); fi
+          python bench/replay/replay.py "${args[@]}"
+      - name: Upload results and audits
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-${{ matrix.slug }}
+          path: |
+            bench/replay/results-*.csv
+            bench/replay/out/
+          if-no-files-found: warn

@@ -8,7 +8,8 @@
   pair, writing `bench/replay/results.csv`. Builds are cached per commit, a failed build is
   recorded as skipped rather than as a pass or a fail, and `--pilot` runs 2 repositories x
   20 commits. `bench/replay/repos.json` holds the 11 repositories from the pre-registration.
-  Not part of the package. No behaviour changed.
+  The manual `replay` workflow runs it on Ubuntu, one repository per job, and uploads each
+  job's results and audits. Not part of the package. No behaviour changed.
 - **Pre-registration for the replay benchmark.** `bench/PREREGISTRATION.md` fixes, before any
   data exists, the frozen version (1.6.0, `badbb38`), the 11 repositories, the commit range
   (last 50 commits before 2026-10-01), the pass/fail thresholds and the decision rules.

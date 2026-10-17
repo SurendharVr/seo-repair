@@ -8,10 +8,13 @@ base of the next, so N comparisons cost N+1 builds.
   python bench/replay/replay.py                     # every repository, N from repos.json
   python bench/replay/replay.py --pilot             # the first 2 repositories, 20 commits each
   python bench/replay/replay.py --only vuejs/docs
+  python bench/replay/replay.py --pilot --list      # the selection as JSON, for a CI matrix
 
 Writes bench/replay/results.csv, one row per comparison. Each commit's build and audit are
 cached under --out by SHA, so a re-run only does what is missing. A failed build is never a
-pass or a fail: both comparisons that touch it are recorded as skipped.
+pass or a fail: both comparisons that touch it are recorded as skipped. Stopping a run
+mid-build records that commit as build_failed too; delete its folder under --out before
+re-running.
 
 sitemend runs from the installed package, which must be the version frozen in
 bench/PREREGISTRATION.md. --scripts runs another copy instead (the tests use the source tree).
@@ -153,9 +156,10 @@ def main(argv=None):
     ap.add_argument("--only", help="comma-separated owner/name list")
     ap.add_argument("--scripts", help="sitemend's scripts folder (default: the installed package)")
     ap.add_argument("--timeout", type=int, default=1800, help="seconds per build")
+    ap.add_argument("--list", action="store_true",
+                    help="print the selected repositories as JSON and exit")
     args = ap.parse_args(argv)
 
-    scripts = args.scripts or installed_scripts()
     with open(args.config, encoding="utf-8") as fh:
         repos = json.load(fh)
     if args.only:
@@ -163,6 +167,11 @@ def main(argv=None):
         repos = [e for e in repos if e["repo"] in wanted]
     if args.pilot and not args.only:
         repos = repos[:PILOT[0]]
+    if args.list:
+        print(json.dumps([{"repo": e["repo"], "slug": e["repo"].replace("/", "__"),
+                           "node_version": str(e.get("node_version", ""))} for e in repos]))
+        return 0
+    scripts = args.scripts or installed_scripts()
     os.makedirs(args.work, exist_ok=True)
     env = tool_env(args.work)
 
@@ -179,9 +188,9 @@ def main(argv=None):
         for i, sha in enumerate(shas, 1):
             outdir = os.path.join(args.out, entry["repo"].replace("/", "__"), sha)
             rec = build_and_audit(entry, path, sha, outdir, sys.executable, scripts, env, args.timeout)
-            print("{0} {1}/{2} {3} {4} build {5}s audit {6}s".format(
+            print("{0} {1}/{2} {3} {4} build {5} s audit {6} s".format(
                 entry["repo"], i, len(shas), sha[:10], rec["status"], rec["build_seconds"],
-                rec["audit_seconds"]), flush=True)
+                "-" if rec["audit_seconds"] is None else rec["audit_seconds"]), flush=True)
             recs.append((rec, outdir))
         builds.extend(r for r, _ in recs)
         for (base, base_dir), (head, head_dir) in zip(recs, recs[1:]):
