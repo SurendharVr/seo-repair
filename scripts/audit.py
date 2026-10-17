@@ -15,7 +15,7 @@ import math
 import re
 from collections import defaultdict
 from fractions import Fraction
-from urllib.parse import urlsplit
+from seolib import urlsplit  # tolerant of malformed URLs (#51)
 
 import seolib as S
 

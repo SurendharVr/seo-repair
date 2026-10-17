@@ -12,7 +12,18 @@ import shutil
 import signal
 import subprocess
 import tempfile
-from urllib.parse import urlsplit, urljoin
+from urllib.parse import urlsplit as _urlsplit, urljoin
+
+
+def urlsplit(url):
+    """urllib's urlsplit, except that a malformed URL splits as empty instead of raising.
+    A host that starts with "[" but is not a valid IPv6 literal ("http://[x") is common
+    in minified bundles, and one such string stopped the whole audit (#51). audit.py and
+    crawl.py import this one, so every URL a site supplies goes through it."""
+    try:
+        return _urlsplit(url)
+    except ValueError:
+        return _urlsplit("")
 
 # Directories that must never be crawled. dist/build/_site are build output and are
 # usually near-identical copies of the source -- crawling them turns every real page
@@ -171,12 +182,17 @@ def resolve_href(page_url, href):
     kind = link_kind(href)
     if kind != "link":
         return kind, href
-    if href.startswith("//"):
-        return "absolute", "https:" + href
-    parts = urlsplit(href)
-    if parts.scheme in ("http", "https") and parts.netloc:
-        return "absolute", href
-    return "internal", norm_path(urljoin(page_url, href))
+    try:
+        if href.startswith("//"):
+            _urlsplit("https:" + href)
+            return "absolute", "https:" + href
+        parts = _urlsplit(href)
+        if parts.scheme in ("http", "https") and parts.netloc:
+            return "absolute", href
+        return "internal", norm_path(urljoin(page_url, href))
+    except ValueError:
+        # Not a URL anything can fetch (#51): neither a page of this site nor another's.
+        return "invalid", href
 
 
 # ---------------------------------------------------------------- robots.txt
