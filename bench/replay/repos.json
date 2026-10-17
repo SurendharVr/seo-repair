@@ -19,7 +19,7 @@
     "repo": "ionic-team/ionic-docs",
     "ref_cutoff": "2026-10-01T00:00:00Z",
     "commits": 50,
-    "build_command": "npm ci && npm run build:production",
+    "build_command": "npm ci && node scripts/cli.mjs && echo [] > src/components/page/reference/ReleaseNotes/release-notes.json && npm run build:preview",
     "site_dir": "build",
     "node_version": "24"
   },
@@ -27,7 +27,7 @@
     "repo": "trpc/trpc",
     "ref_cutoff": "2026-10-01T00:00:00Z",
     "commits": 50,
-    "build_command": "pnpm install --frozen-lockfile && pnpm --dir www build",
+    "build_command": "export NODE_OPTIONS=--max-old-space-size=8192 && pnpm install --frozen-lockfile && pnpm build-www",
     "site_dir": "www/build",
     "node_version": "24"
   },
@@ -35,7 +35,7 @@
     "repo": "unocss/unocss",
     "ref_cutoff": "2026-10-01T00:00:00Z",
     "commits": 50,
-    "build_command": "pnpm install --frozen-lockfile && pnpm --dir docs build",
+    "build_command": "export NODE_OPTIONS=--max_old_space_size=4096 && pnpm install --frozen-lockfile && pnpm run build && pnpm --dir docs build",
     "site_dir": "docs/dist",
     "node_version": "24"
   },

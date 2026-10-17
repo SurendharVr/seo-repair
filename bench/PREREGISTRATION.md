@@ -149,3 +149,32 @@ Decided by B before any full-run data exists:
   not left out.
 
 Decided by (B): SurendharVr. Date: 2026-10-17.
+
+## Addendum 2: build-command fixes (2026-10-17, before the full run)
+
+The first seeded run (GitHub Actions run 39019105380) found that three of the pre-registered
+build commands fail on the Ubuntu runner at the cutoff commit: ionic-team/ionic-docs (a
+generated sidebar category was empty because the command skipped the project's markdown
+generation), trpc/trpc (Node ran out of heap) and unocss/unocss (the docs import a workspace
+package that has to be built first). Section 2 said a repository that fails its build is
+replaced. Instead, decided by B before any full-run data exists:
+
+- The repository list, N, the cutoff and the thresholds do not change.
+- Only `build_command` (and `site_dir` if needed) may change, to follow the project's own
+  build at the cutoff commit: its `package.json` scripts, `netlify.toml` and task runner.
+- A build may not need a secret. Content a project fetches live at build time is replaced
+  by its committed data or by a fixed stub, the same for every commit, so a difference
+  between base and head comes from the commit.
+- Each fix is verified by building the cutoff commit on the Ubuntu runner before the full
+  run, and is recorded below with its source. Nothing changes once full-run data exists;
+  a repository that still cannot be built is replaced as section 2 says.
+
+| Repository | Was | Now | Source |
+|---|---|---|---|
+| ionic-team/ionic-docs | `npm ci && npm run build:production` | `npm ci && node scripts/cli.mjs && echo [] > src/components/page/reference/ReleaseNotes/release-notes.json && npm run build:preview` | `prebuild` runs `generate-markdown`. Of its three scripts, `cli.mjs` uses committed data; `native.mjs` fetches plugin READMEs at `@latest` and `release-notes.mjs` needs a `GITHUB_TOKEN` and live releases, so they are not run, and the gitignored `release-notes.json` is an empty list for every commit. `build:preview` is what `npm run build` runs without `VERCEL_ENV` (English only). |
+| trpc/trpc | `pnpm install --frozen-lockfile && pnpm --dir www build` | `export NODE_OPTIONS=--max-old-space-size=8192 && pnpm install --frozen-lockfile && pnpm build-www` | The root `build-www` script (`turbo --filter www build`) builds the workspace packages the site depends on; the default heap ran out at about 4 GB. |
+| unocss/unocss | `pnpm install --frozen-lockfile && pnpm --dir docs build` | `export NODE_OPTIONS=--max_old_space_size=4096 && pnpm install --frozen-lockfile && pnpm run build && pnpm --dir docs build` | `netlify.toml` runs `pnpm run deploy` (`nr build && npm -C docs run build && …`) with that `NODE_OPTIONS`; the playground and interactive builds are not part of the docs site. |
+
+Verified on Ubuntu: ____ (run link).
+
+Decided by (B): SurendharVr. Date: 2026-10-17.
