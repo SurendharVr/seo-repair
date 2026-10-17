@@ -129,3 +129,23 @@ Applied to the full run's results as written, with the outcome at the top of the
 - Date: 2026-10-17
 - Merged before any replay run on real data (commit SHA of the merge):
   `5899d56a42f71ffdf8fad901913f2e5e2c8b6b50` (#48)
+
+## Addendum 1: tool failures (2026-10-17, before the full run)
+
+The Ubuntu pilot (GitHub Actions run 39007242130; data in `bench/replay/pilot/`) built all
+21 replayed commits of electron/website, but sitemend 1.6.0 crashed auditing every one of
+them (issue #51: `resolve_href` raises "Invalid IPv6 URL" on a URL with `[` in the host,
+found in the site's CSS/JS bundles). vuejs/docs built and audited all 21 commits.
+
+Decided by B before any full-run data exists:
+
+- sitemend 1.6.0 stays frozen. The crash is not fixed until the Task 8 report is published.
+- electron/website stays in the sample.
+- A commit whose audit fails is recorded as `audit_failed`, and both comparisons that touch
+  it as `skipped_audit_failed`. Like failed builds, they count toward neither frequency
+  nor precision.
+- The report counts them as **tool failures**: per repository, the number of commits
+  sitemend could not audit and why, stated next to the results as a reliability finding,
+  not left out.
+
+Decided by (B): SurendharVr. Date: 2026-10-17.
