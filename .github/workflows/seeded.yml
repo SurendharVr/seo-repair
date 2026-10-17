@@ -54,7 +54,7 @@ jobs:
           node-version: ${{ matrix.node_version }}
       # The frozen version from bench/PREREGISTRATION.md; the harness refuses any other.
       - name: Install sitemend
-        run: python -m pip install --quiet "sitemend==1.6.0"
+        run: python -m pip install --quiet "sitemend==1.7.0"
       - name: Seeded recall
         env:
           REPO: ${{ matrix.repo }}

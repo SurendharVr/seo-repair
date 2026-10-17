@@ -16,26 +16,26 @@
     "node_version": "24"
   },
   {
-    "repo": "ionic-team/ionic-docs",
+    "repo": "facebook/relay",
     "ref_cutoff": "2026-10-01T00:00:00Z",
     "commits": 50,
-    "build_command": "npm ci && npm run build:production",
-    "site_dir": "build",
+    "build_command": "yarn --cwd website install --frozen-lockfile && yarn --cwd website build",
+    "site_dir": "website/build",
     "node_version": "24"
   },
   {
-    "repo": "trpc/trpc",
+    "repo": "typescript-eslint/typescript-eslint",
     "ref_cutoff": "2026-10-01T00:00:00Z",
     "commits": 50,
-    "build_command": "pnpm install --frozen-lockfile && pnpm --dir www build",
-    "site_dir": "www/build",
+    "build_command": "pnpm install --frozen-lockfile && pnpm exec nx build website",
+    "site_dir": "packages/website/build",
     "node_version": "24"
   },
   {
     "repo": "unocss/unocss",
     "ref_cutoff": "2026-10-01T00:00:00Z",
     "commits": 50,
-    "build_command": "pnpm install --frozen-lockfile && pnpm --dir docs build",
+    "build_command": "export NODE_OPTIONS=--max_old_space_size=4096 && pnpm install --frozen-lockfile && pnpm run build && pnpm --dir docs build",
     "site_dir": "docs/dist",
     "node_version": "24"
   },

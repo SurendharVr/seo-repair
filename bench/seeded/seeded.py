@@ -39,6 +39,9 @@ REPOS = 5   # the first 5 in repos.json, decided before any recall data (2026-10
 # The frozen sitemend's own test for 404/error/thank-you pages (audit.is_utility), set in
 # main(): those are never mutation targets, because the audit rightly treats them apart.
 is_utility = None
+# Run and reported, but left out of the pooled recall: its rule was fixed after the seeded
+# test showed this mutation being missed, so its result is not independent (Addendum 3).
+REPORTED_APART = {"rating-unsupported"}
 FIELDS = ["repo", "mutation", "expected_rule", "expected_severity", "target", "fired", "gate_failed"]
 PREVIEW = "https://seeded-git-preview.vercel.app"
 CANONICAL_TAG = re.compile(r"<link\b(?=[^>]*\brel=[\"']?canonical\b)[^>]*>", re.I)
@@ -256,17 +259,19 @@ def recall_md(rows, sources):
         mine = [r for r in rows if r["mutation"] == name]
         runs = [r for r in mine if r["fired"] in ("y", "n")]
         fired = sum(r["fired"] == "y" for r in runs)
-        if sev in ("critical", "high"):
+        if sev in ("critical", "high") and name not in REPORTED_APART:
             pool_runs += len(runs)
             pool_fired += fired
         out.append("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} | {9} |".format(
-            name, rule, sev, len(runs), fired,
+            name + (" (apart)" if name in REPORTED_APART else ""), rule, sev, len(runs), fired,
             "{0:.1f}%".format(100.0 * fired / len(runs)) if runs else "n/a",
             sum(r["gate_failed"] == "y" for r in runs),
             sum(r["fired"] == "n/a" for r in mine), sum(r["fired"] == "build_failed" for r in mine),
             sum(r["fired"] == "tool_failure" for r in mine)))
     out += ["", "**Recall, critical and high mutation types: {0} of {1} ({2})**".format(
-        pool_fired, pool_runs, "{0:.1f}%".format(100.0 * pool_fired / pool_runs) if pool_runs else "n/a")]
+        pool_fired, pool_runs, "{0:.1f}%".format(100.0 * pool_fired / pool_runs) if pool_runs else "n/a"),
+            "", "Mutations marked (apart) are reported but not pooled: the rule they test was fixed "
+                "after the seeded test showed them missed (Addendum 3)."]
     controls = [r for r in rows if r["mutation"] == "control" and r["gate_failed"] in ("y", "n")]
     out += ["", "Controls (base against an unmutated copy): {0} run, {1} passed the gate.".format(
         len(controls), sum(r["gate_failed"] == "n" for r in controls))]
