@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Replay pilot results and a tool-failure rule.** `bench/replay/pilot/` holds the Ubuntu
+  pilot (2 repositories x 20 commits): vuejs/docs built and audited all 21 commits and all
+  20 comparisons passed; electron/website built all 21 but sitemend 1.6.0 crashed auditing
+  each one (#51). The pre-registration gains a dated addendum, decided before the full run:
+  1.6.0 stays frozen, #51 waits until the benchmark report is published, and failed audits
+  are reported as tool failures. No behaviour changed.
 - **Replay harness for the benchmark.** `bench/replay/replay.py` builds each pre-registered
   repository's last N first-parent commits before the cutoff, audits every build with the
   frozen sitemend (it refuses any version but 1.6.0) and runs the gate on each consecutive
